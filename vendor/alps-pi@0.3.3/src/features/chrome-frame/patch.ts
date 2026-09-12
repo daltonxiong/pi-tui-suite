@@ -104,6 +104,23 @@ const RENDER_CACHE_KEY = Symbol.for("alps.pi.renderCache.v6");
 // collapsedSignature join / createTimingContentKey 都在它之前 —— 长会话下单帧 ~62ms。
 // 这里在拿到 innerLines（pi 组件内容未变时返回同一数组引用）后立即比对，命中直接返回。
 const LOCAL_RENDER_CACHE_KEY = Symbol.for("pi-tui-suite.alpsChromeRenderCache.v1");
+
+/**
+ * 逐元素比较两次 render 的行数组。
+ *
+ * 为何不用引用相等：pi 的 `Container.render()` 每帧都 `const lines = []` 新建数组，
+ * 引用永远不同（只有 Text/Box 这种叶子组件才会返回同一引用）。
+ * 也不能用 `join("\n")` 当键 —— 那正是上游缓存没效果的原因（长会话一次 join 800KB 文本 ~1-3ms）。
+ * 逐元素比字符串是纯指针比较：1.67 万行约 10–40 µs，且不分配。
+ */
+function localLinesEqual(a: readonly string[] | undefined, b: readonly string[]): boolean {
+	if (a === b) return true;
+	if (!a || a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
 const COLLAPSED_TOOL_RENDER_KEY = Symbol.for("alps.pi.collapsedToolRender.v1");
 const TIMING_STATE_KEY = Symbol.for("alps.pi.timingState.v1");
 const TRACKED_SETTINGS_KEY = Symbol.for("alps.pi.trackedSettings.v1");
@@ -1036,7 +1053,7 @@ export function createWrappedRender(
 				const localCache = (instance as any)[LOCAL_RENDER_CACHE_KEY] as
 					| { key: string; inner: readonly string[]; lines: string[] }
 					| undefined;
-				if (localCache && localCache.key === localKey && localCache.inner === innerLines) {
+				if (localCache && localCache.key === localKey && localLinesEqual(localCache.inner, innerLines)) {
 					branch = "localCache";
 					return debugReturn ? debugReturn(localCache.lines, branch) : localCache.lines;
 				}
