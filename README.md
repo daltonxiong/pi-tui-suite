@@ -165,6 +165,7 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | `balance.refreshSeconds` | `10` | 刷新间隔；`0` ＝ 关闭轮询（只在会话开始 / 切模型 / 回合结束时查） |
 | `balance.maxBackoffSeconds` | `120` | 连续失败时的退避上限 |
 | `balance.providers` | `{}` | 额外 provider 的余额接口，见下 |
+| `probe` / `profile` | 关闭 | **仅供排查性能**：渲染帧率/帧耗时探针、V8 采样剖分，默认关闭且零开销，见「开发辅助」 |
 
 ## 命令
 
