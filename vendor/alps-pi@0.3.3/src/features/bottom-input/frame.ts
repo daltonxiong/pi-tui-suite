@@ -37,11 +37,46 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
 	const width = Number.isFinite(input.width) ? Math.max(0, Math.floor(input.width)) : 0;
 	if (width < MIN_FRAME_WIDTH) return [...input.editorLines];
 	const editorLines = input.editorLines.length > 0 ? [...input.editorLines] : [""];
+	// ── LOCAL PATCH (pi-tui-suite)：窄屏（手机端）把 model 与 balance 提到输入框上方单独一行 ──
+	// 上游把 model·thinking 放左边、context 进度条（+余额）放右边；48 列的手机上两者挤不下，
+	// buildBorderLine() 会先截断右侧 ⇒ 余额直接看不见。放不下时改成：
+	//   上一行： 模型名（左） …… 余额（右）
+	//   边框行： ╭─ thinking ──── ▤━━━╸───── 42.3%/128k ─╮
+	// 宽度够（桌面 / 横屏）时保持上游原样。
+	const stackNarrowStatus = shouldStackNarrowStatus(width, input.status);
+	const frameStatus = stackNarrowStatus ? { ...input.status, model: null, balance: null } : input.status;
+	const stackedLine = stackNarrowStatus ? buildNarrowStatusTopLine(width, input.status) : "";
 	return [
-		buildTopBorder(width, input.theme, input.status, input.borderColor),
+		...(stackedLine ? [stackedLine] : []),
+		buildTopBorder(width, input.theme, frameStatus, input.borderColor),
 		...editorLines.map((line) => renderContentLine(line, width, input.theme, input.borderColor)),
-		buildBottomBorder(width, input.theme, input.status, input.borderColor),
+		buildBottomBorder(width, input.theme, frameStatus, input.borderColor),
 	];
+}
+
+/**
+ * LOCAL PATCH (pi-tui-suite)：边框里放不下「左 model·thinking + 右 context·balance」时，
+ * 改用「上方单独一行放 model + balance」的堆叠布局。阈值现算（不是魔法数字）：
+ * 两侧标签宽度 + 6（边框、空格、省略号余量）超过总宽就堆叠。
+ */
+function shouldStackNarrowStatus(width: number, status: BottomInputFrameStatus): boolean {
+	if (!status.model && !status.balance) return false;
+	const leftPlain = [status.model, status.thinking].filter(Boolean).join(" · ");
+	const rightPlain = [status.context, status.balance].filter(Boolean).join(" ");
+	if (visibleWidth(leftPlain) + visibleWidth(rightPlain) + 6 <= width) return false;
+	// 模型名和余额都没了（只剩 thinking / context）时堆叠没意义，交给上游的截断逻辑
+	return Boolean(status.balance || status.model);
+}
+
+/** 堆叠布局那一行：模型名左对齐、余额右对齐，中间填空格（余额优先保留）。 */
+function buildNarrowStatusTopLine(width: number, status: BottomInputFrameStatus): string {
+	const balance = status.balance ?? "";
+	const balanceWidth = visibleWidth(balance);
+	const model = status.model ?? "";
+	const modelBudget = Math.max(0, width - balanceWidth - (balanceWidth > 0 ? 2 : 0));
+	const clippedModel = model && modelBudget > 0 ? truncateToWidth(model, modelBudget, "…", false) : "";
+	const gap = Math.max(0, width - visibleWidth(clippedModel) - balanceWidth);
+	return truncateToWidth(`${clippedModel}${" ".repeat(gap)}${balance}`, width, "");
 }
 
 function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string): string {
