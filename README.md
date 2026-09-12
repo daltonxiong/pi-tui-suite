@@ -50,6 +50,10 @@ pi install git:github.com/daltonxiong/pi-tui-suite
 # 方式 B：手动把仓库放到任意目录，然后在 pi 配置目录（默认 ~/.pi/agent）的 settings.json
 #         的 packages 里加上这个目录的相对路径（相对该 settings.json 所在目录），
 #         路径按你 clone 的实际位置写，例如 "../../path/to/pi-tui-suite"，然后 /reload
+
+# 无论哪种方式，都要在仓库目录装一次运行时依赖（vendored alps-pi 的 settings-store
+# 静态 import 了 proper-lockfile）：
+cd /path/to/pi-tui-suite && npm i --omit=dev
 ```
 
 临时试用（不改配置，把路径换成你的实际位置）：
@@ -133,6 +137,17 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 ```
 
 `url` 里的 `{baseUrl}` 会替换成 pi 解析出的 baseUrl；`kind` 目前支持 `deepseek`、`openrouter-credits`、`openrouter-key`。
+
+## 性能
+
+内置两处优化，不需要配置：
+
+- **动画帧率默认 4**（可选 `2/4/6/8/12/16/24/30`）：pi 每帧会重渲染整个会话，帧率直接等于 CPU 占用；
+  桌面机器如果想更顺，把 `alpsPi.animationsFps` 调回 `16`（或 `null` 交回 `/alps-pi` 面板）。
+- **渲染热点已修**：线框组件不再每帧重复归一化配置、header 渲染结果有缓存、动画 tick 不再重复请求重绘。
+
+> 满屏重绘是 pi-tui 的固有设计（无视口虚拟化），单帧成本 ∝ 会话行数，
+> 所以**长会话请按任务 `/new`、长了 `/compact`** —— 这比任何单帧优化都有效。
 
 ## 与上游的关系
 
