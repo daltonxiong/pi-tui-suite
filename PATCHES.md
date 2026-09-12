@@ -141,6 +141,28 @@ deepseek/deepseek-flash                   ¥42.50
 **代价**：动画行不再叠一个转圈图标，只剩动画本身在动（4 fps 下仍看得出在动）。
 想要回原来的样子就删掉这一处改动。
 
+## 9. 幂等化 tracked settings（35% CPU 的热点）
+
+**文件**：`vendor/alps-pi@0.3.3/src/features/chrome-frame/patch.ts`
+**标记**：搜 `LOCAL PATCH (pi-tui-suite)：已包过就直接返回` / `幂等化`
+
+**上游问题**：`createWrappedRender()` 每帧、每个组件都会调用 `getGlobalPatchState()`，
+而它内部**无条件**跑 `ensurePatchStateConfigTracking()` → `createTrackedSettings()` →
+`normalizeSettings()`（一大堆对象展开）+ 新建 **8 个 Proxy**（且 Proxy 会层层嵌套，之后每次读字段都穿多层陷阱）。
+
+V8 采样剖分实测（跑工具窗口，10 s / 14166 个采样）：
+
+```
+1358.5ms  19.2%  normalizeSettings  @ chrome-frame/patch.ts:424
+ 752.5ms  10.6%  normalizeSettings  @ 同上            ← 合计 34.8%
+ 159.0ms   2.2%  alpsChromeWrappedRender @ patch.ts:959
+  58.5ms   0.8%  get（Proxy 陷阱）@ patch.ts:417
+```
+
+**改动**：`createTrackedSettings()` 开头判断 `settings[TRACKED_SETTINGS_KEY]`（Proxy 的 get 陷阱会报告这个标记）
+已存在就直接返回；`ensurePatchStateConfigTracking()` 只在未包过时才包一次。
+两处调用点都不传 `enabled`，配置面板也是原地改 `state.config.settings`（不整体替换），所以语义不变。
+
 ---
 
 ## 上游同步流程

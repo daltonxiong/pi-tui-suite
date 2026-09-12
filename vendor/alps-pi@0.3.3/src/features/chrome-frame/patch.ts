@@ -488,6 +488,12 @@ function normalizeSettings(settings: AlpsPiSettings | any, enabled?: boolean): A
 }
 
 function createTrackedSettings(settings: AlpsPiSettings, onChange: () => void, enabled?: boolean): AlpsPiSettings {
+	// ── LOCAL PATCH (pi-tui-suite)：已包过就直接返回 ───────────────────────
+	// 上游把本函数放在 getGlobalPatchState() 里，而 getGlobalPatchState() 在渲染热路径上
+	// 被**每个组件每帧**调一次 ⇒ 每次都重新 normalizeSettings + 新建 8 个 Proxy（还会层层嵌套）。
+	// V8 采样剖分实测：这两件事占 35% CPU（normalizeSettings 19%+11%、Proxy get 约 1%）。
+	// 已包过的设置对象（Proxy 的 get 陷阱会报告 TRACKED_SETTINGS_KEY）直接返回即可。
+	if ((settings as any)?.[TRACKED_SETTINGS_KEY]) return settings;
 	const normalized = normalizeSettings(settings, enabled);
 	normalized.chromeFrame = createTrackedObject(normalized.chromeFrame, onChange);
 	normalized.fixedBottomEditor = createTrackedObject(normalized.fixedBottomEditor, onChange);
@@ -503,9 +509,13 @@ function ensurePatchStateConfigTracking(state: PatchState): PatchState {
 	if (typeof state.configVersion !== "number") state.configVersion = 0;
 	// reload 兼容旧全局 state：补齐 P4 conflict 集合，避免 skip-restore 后再次包装未知 wrapper。
 	if (!(state as any).conflicts) state.conflicts = new Set();
-	state.config.settings = createTrackedSettings(state.config.settings, () => {
-		state.configVersion += 1;
-	});
+	// ── LOCAL PATCH (pi-tui-suite)：幂等化（配合 createTrackedSettings 的早返回）──────
+	// 上游这里无条件重建 tracked settings，而它每帧会被调用多次 ⇒ 实测占 35% CPU。
+	if (!(state.config.settings as any)?.[TRACKED_SETTINGS_KEY]) {
+		state.config.settings = createTrackedSettings(state.config.settings, () => {
+			state.configVersion += 1;
+		});
+	}
 	return state;
 }
 
