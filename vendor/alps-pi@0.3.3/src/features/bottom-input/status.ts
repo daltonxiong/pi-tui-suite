@@ -64,6 +64,12 @@ export type BottomInputFrameStatus = {
 	balance?: string | null;
 	/** LOCAL PATCH：cache 命中率（0–100）—— 放在上边框、上下文进度条前面；null = 不显示 */
 	cacheHitRate?: number | null;
+	/** LOCAL PATCH：会话内“显著 cache miss”次数（判定规则镜像 pi 的 detectMiss，阈值 1024 token） */
+	cacheMissCount?: number | null;
+	/** LOCAL PATCH：会话累计花费（USD，取每条 assistant 消息的 usage.cost.total 之和） */
+	sessionCost?: number | null;
+	/** LOCAL PATCH：因 cache miss 白花的钱（USD，pi 同一套算式） */
+	missedCost?: number | null;
 	elapsed: string | null;
 	sessionUsage?: SessionUsageSnapshot | null;
 	tokensPerSecond?: number | null;
@@ -174,7 +180,76 @@ export function renderBottomInputStatus(input: BottomInputStatusState): BottomIn
 	};
 }
 
-/** LOCAL PATCH (pi-tui-suite)：cache 命中率的可见性判定（与上游下边框那段同一套条件）。 */
+/**
+ * LOCAL PATCH (pi-tui-suite)：会话累计花费 + cache miss 统计。
+ *
+ * 数据源与 pi 完全一致（session entries）：每条 assistant 消息的
+ * `usage.cost.total` 就是那次请求的真实花费（已按当时模型定价算好，切模型也不会算错）。
+ * miss 判定镜像 pi 的 `detectMiss`：拿上一次请求的 prompt 量与本次 cacheRead 比，
+ * 少命中 > 1024 token 才算“显著 miss”（所以小波动不会刷屏）。
+ */
+function localNumber(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+	return undefined;
+}
+
+function readSessionCostSnapshot(ctx: any): { totalCost: number; missCount: number; missedCost: number } | null {
+	const entries = readSessionEntries(ctx);
+	if (entries.length === 0) return null;
+
+	let totalCost = 0;
+	let missCount = 0;
+	let missedCost = 0;
+	let sawAssistant = false;
+	let prev: { prompt: number; reportedCache: boolean } | undefined;
+
+	for (const entry of entries) {
+		if (!isRecord(entry)) continue;
+		if (entry.type === "compaction" || entry.type === "branch_summary") {
+			prev = undefined;
+			continue;
+		}
+		if (entry.type !== "message" || !isRecord(entry.message)) continue;
+		const message = entry.message as Record<string, any>;
+		if (message.role !== "assistant" || !isAssistantUsage(message.usage)) continue;
+		sawAssistant = true;
+
+		const usage: any = message.usage;
+		const cost = isRecord(usage.cost) ? (usage.cost as Record<string, unknown>) : undefined;
+		const total = localNumber(cost?.total);
+		if (typeof total === "number") totalCost += total;
+
+		const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+		const cachedTokens = usage.cacheRead + usage.cacheWrite;
+		if (prev && promptTokens > 0 && !(cachedTokens === 0 && !prev.reportedCache)) {
+			const missedTokens = Math.min(prev.prompt, promptTokens) - usage.cacheRead;
+			if (missedTokens > 1024) {
+				const paidTokens = usage.input + usage.cacheWrite;
+				const paidPerToken = paidTokens > 0 ? ((localNumber(cost?.input) ?? 0) + (localNumber(cost?.cacheWrite) ?? 0)) / paidTokens : 0;
+				const readPerToken = usage.cacheRead > 0 ? (localNumber(cost?.cacheRead) ?? 0) / usage.cacheRead : 0;
+				missCount += 1;
+				missedCost += missedTokens * Math.max(0, paidPerToken - readPerToken);
+			}
+		}
+		if (promptTokens > 0) {
+			prev = { prompt: promptTokens, reportedCache: (prev?.reportedCache ?? false) || cachedTokens > 0 };
+		}
+	}
+
+	return sawAssistant ? { totalCost, missCount, missedCost } : null;
+}
+
+/** 金额格式化：≥1 两位小数、≥0.01 三位、否则四位（余额/花费共用）。 */
+export function formatUsd(value: number): string {
+	const abs = Math.abs(value);
+	if (abs >= 1) return `$${value.toFixed(2)}`;
+	if (abs >= 0.01) return `$${value.toFixed(3)}`;
+	if (abs === 0) return "$0.000";
+	return `$${value.toFixed(4)}`;
+}
+
+/** LOCAL PATCH：cache 命中率的可见性判定（与上游下边框那段同一套条件）。 */
 function readCacheHitRate(
 	inputMetrics: InputMetricsSettings | undefined,
 	sessionUsage: SessionUsageSnapshot | null | undefined,
@@ -200,6 +275,13 @@ export function renderFrameStatus(input: BottomInputStatusState & { icons?: Bott
 		balance: inlineBalance ? safeFg(input.theme, "muted", inlineBalance) : null,
 		// LOCAL PATCH (pi-tui-suite)：cache 命中率给上边框用（下边框那段已移除）
 		cacheHitRate: readCacheHitRate(input.inputMetrics, sessionUsage),
+		// LOCAL PATCH：会话花费 + cache miss 统计
+		...((): Pick<BottomInputFrameStatus, "sessionCost" | "cacheMissCount" | "missedCost"> => {
+			const cost = readSessionCostSnapshot(input.ctx);
+			return cost
+				? { sessionCost: cost.totalCost, cacheMissCount: cost.missCount, missedCost: cost.missedCost }
+				: { sessionCost: null, cacheMissCount: null, missedCost: null };
+		})(),
 		elapsed: renderElapsedSegment(input.theme, input.sessionStartTime, input.now, icons),
 		sessionUsage,
 		tokensPerSecond: input.tokensPerSecond ?? null,

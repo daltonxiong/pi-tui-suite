@@ -39,16 +39,54 @@ const theme = {
 
 /** 假 ctx：喂进真实数字，让所有指标都有内容（真运行时这些来自 pi） */
 function makeCtx() {
-	const usageEntry = {
-		type: "message",
-		message: { role: "assistant", usage: { input: 1234, output: 340, cacheRead: 800, cacheWrite: 40 } },
-	};
+	// 两条 assistant：第二条 cacheRead=0（相对上一条 prompt 2074 少了 >1024）⇒ 会被 pi 的规则判为 1 次显著 miss
+	const entries = [
+		{
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 1234,
+					output: 340,
+					cacheRead: 800,
+					cacheWrite: 40,
+					cost: { input: 0.0003, output: 0.00012, cacheRead: 0.00002, cacheWrite: 0.00001, total: 0.00045 },
+				},
+			},
+		},
+		{
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 5000,
+					output: 120,
+					cacheRead: 0,
+					cacheWrite: 0,
+					cost: { input: 0.0012, output: 0.00004, cacheRead: 0, cacheWrite: 0, total: 0.00124 },
+				},
+			},
+		},
+		{
+			type: "message",
+			message: {
+				role: "assistant",
+				usage: {
+					input: 500,
+					output: 120,
+					cacheRead: 6000,
+					cacheWrite: 0,
+					cost: { input: 0.0001, output: 0.00004, cacheRead: 0.0004, cacheWrite: 0, total: 0.00054 },
+				},
+			},
+		},
+	];
 	return {
 		model: { provider: "deepseek", id: "deepseek-flash", name: "deepseek-flash", contextWindow: 128000 },
 		getContextUsage: () => ({ tokens: 42000, contextWindow: 128000, percent: 32.8 }),
 		// 真运行时是 pi 的 SessionManager（alps-pi 读 ctx.sessionManager.getEntries()）
-		sessionManager: { getEntries: () => [usageEntry] },
-		getBranchEntries: () => [usageEntry],
+		sessionManager: { getEntries: () => entries },
+		getBranchEntries: () => entries,
 		getThinkingLevel: () => "medium",
 	};
 }
@@ -94,9 +132,11 @@ for (const width of widths) {
 		["上下文进度条", "▤"],
 		["上下文 %/窗口", "32.8%/128k"],
 		["余额", "¥16.68"],
-		["下边框:输入 token", "1.2k"],
-		["下边框:输出 token", "340"],
-		["上边框:cache 命中率", "38.6%"],
+		["下边框:输入 token", "6.7k"],
+		["下边框:输出 token", "580"],
+		["上边框:cache 命中率", "92.3%"],
+		["上边框:cache miss 次数", "✗1"],
+		["上边框/堆叠行:会话花费", "$0.0022"],
 		["下边框:token 速度", "18.4tok/s"],
 		["下边框:耗时", "12s"],
 		["footer:扩展状态行(mcp-auth)", "Authenticating"],

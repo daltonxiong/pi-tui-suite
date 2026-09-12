@@ -77,7 +77,28 @@ pi-tui-suite/
 （线框内嵌由 PATCHES.md 第 2 条实现；如果哪天把 `beautifiedInput` 关掉，它会自动回到输入框下方的
 statuses 行，不会消失。）
 
-### 取数策略
+### 输入框区域显示的 6 项
+
+```
+deepseek/deepseek-flash           $0.5944 ¥14.90      ← 模型名 · 会话花费 · 账户余额
+╭ med ────── ↻ 92.3% ✗1 ▤━━━╸────── 45.3%/128k ╮      ← thinking · cache 命中率+miss 次数 · 上下文占用
+│ > 输入框…                                    │
+╰────── ↑ 6.7k · ↓ 580 · » 18.4tok/s · ◷ 1m12s ╯      ← 会话累计 in/out token · 速度 · 会话时长
+```
+
+| 显示 | 含义 | 数据源 |
+| --- | --- | --- |
+| `$0.5944` | **会话累计花费**（USD） | 每条 assistant 消息的 `usage.cost.total` 求和（pi 内置价目表，**与真实账单可能有偏差**） |
+| `¥14.90` | 账户余额 | 余额模块查 provider 账单接口 |
+| `med` | thinking 等级 | pi 会话状态（`shift+tab` 切换） |
+| `↻ 92.3%` | prompt cache 命中率（最近一次请求） | `cacheRead / (input+cacheRead+cacheWrite)` |
+| `✗1` | **会话内“显著 cache miss”次数** | 镜像 pi 的 `detectMiss`（少命中 >1024 token 才算），>0 才显示 |
+| `▤━━━╸── 45.3%/128k` | 上下文占用 / 窗口大小 | `ctx.getContextUsage()` |
+
+窄屏（手机）时「模型名 + 花费 + 余额」会自动上提到输入框上方单独一行；
+下边框的 in/out token、tok/s、耗时在 48 列下会按上游固定顺序被裁（见 `tools/audit-bottom-layout.mjs`）。
+
+### 余额角标的取数策略
 
 | 时机 | 行为 |
 | --- | --- |
