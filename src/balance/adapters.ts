@@ -142,7 +142,7 @@ export function formatAmount(amount: number): string {
 	return amount.toFixed(4);
 }
 
-/** footer 角标文本，例如 "余 ¥17.45"。 */
+/** footer 角标文本，例如 "¥42.50"（label 为空时只显示符号 + 金额）。 */
 export function formatStatusText(result: BalanceResult, label: string): string {
 	return `${label}${result.symbol}${formatAmount(result.amount)}`;
 }

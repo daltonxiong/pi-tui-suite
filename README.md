@@ -5,7 +5,7 @@
 并针对手机端（Termux、48 列窄终端）调过布局与性能。
 
 ```
-deepseek/deepseek-flash                   ¥14.90      ← 模型名 · 账户余额
+deepseek/deepseek-flash                   ¥42.50      ← 模型名 · 账户余额
 ╭ med ───────── ↻ 92.3% ▤━━━╸────── 45.3%/128k ╮      ← 思考等级 · cache 命中率 · 上下文占用
 │ > 输入框…                                    │
 ╰────── ↑ 6.7k · ↓ 580 · » 18.4tok/s · ◷ 1m12s ╯      ← 会话累计 token · 速度 · 时长
@@ -19,7 +19,7 @@ deepseek/deepseek-flash                   ¥14.90      ← 模型名 · 账户�
 | 固定输入框 | 输入区固定在屏幕底部，始终可见；支持展开长输入 |
 | 底部状态栏 | 其他扩展发布的 status（` › ` 分隔）+ `↳ 上一条问题` |
 | 顶部 header | logo + 模型 / 思考等级 / 当前工作目录（不需要可在配置里关掉） |
-| **账户余额角标** | 查 provider 账单接口显示余额（如 `¥14.90`），默认 10 秒刷新；连续失败自动退避，取数不消耗任何 token |
+| **账户余额角标** | 查 provider 账单接口显示余额（如 `¥42.50`），默认 10 秒刷新；连续失败自动退避，取数不消耗任何 token |
 | **cache 命中率** | 最近一次请求的 prompt cache 命中比例，放在输入框上边框，窄屏也不会被裁 |
 | **上下文占用** | 进度条 + 已用百分比 / 模型上下文窗口，占用越高颜色越警示 |
 | 窄屏适配 | 48 列手机端自动把「模型名 + 余额」上提到输入框上方单独一行；宽屏保持单行边框 |
@@ -29,16 +29,18 @@ deepseek/deepseek-flash                   ¥14.90      ← 模型名 · 账户�
 ## 安装
 
 ```bash
-# 1) 拿到本项目（git clone 或直接放到 ~/projects/pi-tui-suite）
-# 2) 在 ~/.pi/agent/settings.json 的 packages 里加一条（路径相对 ~/.pi/agent/）
-#      "../../projects/pi-tui-suite"
-# 3) pi 里执行 /reload
+# 方式 A：让 pi 自己装（git 源）
+pi install git:github.com/daltonxiong/pi-tui-suite
+
+# 方式 B：手动把仓库放到任意目录，然后在 pi 配置目录（默认 ~/.pi/agent）的 settings.json
+#         的 packages 里加上这个目录的相对路径（相对该 settings.json 所在目录），
+#         路径按你 clone 的实际位置写，例如 "../../path/to/pi-tui-suite"，然后 /reload
 ```
 
-临时试用（不改配置）：
+临时试用（不改配置，把路径换成你的实际位置）：
 
 ```bash
-pi -e ~/projects/pi-tui-suite/extensions/pi-tui-suite.ts
+pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 ```
 
 本套件已接管原本由三个插件各自负责的部分，因此建议把它们**停用**（保留安装，随时可恢复正常）：
@@ -48,7 +50,7 @@ pi -e ~/projects/pi-tui-suite/extensions/pi-tui-suite.ts
   { "source": "npm:pi-open-tui",      "extensions": [] },
   { "source": "npm:pi-rounded-tools", "extensions": [] },
   { "source": "npm:alps-pi@0.3.3",    "extensions": [], "themes": [] },
-  "../../projects/pi-tui-suite"
+  "<pi-tui-suite 的相对路径>"
 ]
 ```
 
@@ -56,7 +58,7 @@ pi -e ~/projects/pi-tui-suite/extensions/pi-tui-suite.ts
 
 ## 配置
 
-`~/.pi/agent/pi-tui-suite.json`（不存在即全部使用默认值）：
+`pi-tui-suite.json`（放在 pi 配置目录，默认 `~/.pi/agent/`；文件不存在即全部使用默认值）：
 
 ```json
 {

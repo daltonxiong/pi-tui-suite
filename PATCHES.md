@@ -5,7 +5,7 @@
 
 ---
 
-## 1. chromeFrame 早退缓存（性能修复，ERR-013 的主项）
+## 1. chromeFrame 早退缓存（性能修复，长会话/流式输出每帧开销的主项）
 
 **文件**：`vendor/alps-pi@0.3.3/src/features/chrome-frame/patch.ts`
 **标记**：搜 `LOCAL PATCH` / `LOCAL_RENDER_CACHE_KEY`
@@ -53,7 +53,7 @@ settled 帧按上游自己的规则「完成后冻结」，可安全复用。主
   缓存键加入 `inlineStatuses`（否则余额变了不重绘）。
 - `BottomInputFrameStatus` 增加可选字段 `balance?: string | null`（用 `theme.fg("muted")` 上色）。
 - `frame.ts` 的 `buildTopBorder()`：`rightLabel = joinStyledSegments([status.context, status.balance], " ")`
-  ⇒ 变成 `... ▤━━━━╸───── 42.3%/128k ¥17.29 ╮`。
+  ⇒ 变成 `... ▤━━━━╸───── 42.3%/128k ¥42.50 ╮`。
 - 线框关闭时（`beautifiedInput.enabled = false`）内嵌没有落点，余额自动回到下方 statuses 行（原行为）。
 
 **取消内嵌**：把 `"balance"` 从 `LOCAL_INLINE_STATUS_KEYS` 删掉即可，其余逻辑不用动。
@@ -79,7 +79,7 @@ settled 帧按上游自己的规则「完成后冻结」，可安全复用。主
 **效果**（`node tools/audit-bottom-layout.mjs 48`）：
 
 ```
-deepseek/deepseek-flash                   ¥16.68
+deepseek/deepseek-flash                   ¥42.50
 ╭ med ───────── ↻ 38.6% ▤━━━╸────── 32.8%/128k ╮
 │ > 帮我改一下这个函数                         │
 ╰────── ↑ 1.2k · ↓ 340 · » 18.4tok/s · ◷ 1m12s ╯

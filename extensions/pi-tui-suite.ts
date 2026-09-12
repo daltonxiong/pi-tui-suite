@@ -16,8 +16,8 @@
  * `{ "source": "npm:xxx", "extensions": [] }`（停用但不卸载，一条命令即可回滚）。
  *
  * 加载方式：
- *   - settings.json 的 packages 里加 "../../projects/pi-tui-suite"
- *   - 或临时试用：pi -e ~/projects/pi-tui-suite/extensions/pi-tui-suite.ts
+ *   - pi 配置目录（默认 ~/.pi/agent）的 settings.json 里，把本包目录加进 packages
+ *   - 或临时试用：pi -e <本仓库路径>/extensions/pi-tui-suite.ts
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";

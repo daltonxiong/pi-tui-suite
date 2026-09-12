@@ -32,7 +32,7 @@ const status = {
 	thinking: "medium",
 	// 进度条就用真字符串（含 no-ANSI）
 	context: "▤━━━━━━━╸── 42.3%/128k",
-	balance: "¥16.68",
+	balance: "¥42.50",
 	elapsed: "⏱ 12s",
 	sessionUsage: { input: 1234, output: 340, cacheRead: 0, cacheWrite: 0, latestCacheHitRate: 62.5 },
 	tokensPerSecond: 18.4,

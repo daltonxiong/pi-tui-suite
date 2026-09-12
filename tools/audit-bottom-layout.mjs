@@ -56,7 +56,7 @@ function makeCtx() {
 const statuses = new Map([
 	["mcp-auth", "Authenticating github..."],
 	["pi-mono-context", "ctx 32.8%"],
-	["balance", "¥16.68"], // 本套件的余额角标（会被内嵌到上边框）
+	["balance", "¥42.50"], // 本套件的余额角标（会被内嵌到上边框）
 ]);
 
 /** 每个元素用什么文本判定"看得见"（现已改为用真实生成片段，见下面的 checks） */
@@ -93,7 +93,7 @@ for (const width of widths) {
 		["thinking 等级", strip(layout.frameStatus.thinking ?? "(空)")],
 		["上下文进度条", "▤"],
 		["上下文 %/窗口", "32.8%/128k"],
-		["余额", "¥16.68"],
+		["余额", "¥42.50"],
 		["下边框:输入 token", "1.2k"],
 		["下边框:输出 token", "340"],
 		["上边框:cache 命中率", "38.6%"],

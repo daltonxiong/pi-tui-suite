@@ -13,7 +13,7 @@
  *
  * 失败退避：连续失败时按 5s → 10s → 20s … 直到 maxBackoffSeconds（默认 120s），
  * 免得 429/网络故障时每 10 秒撞一次；成功一次即恢复。
- * 渲染开销：只有文本真的变了才调 setStatus（长会话下 setStatus 会触发重绘，见 ERR-013）。
+ * 渲染开销：只有文本真的变了才调 setStatus（长会话下每次 setStatus 都会触发整屏重绘）。
  *
  * provider → 接口的映射、以及"哪些 provider 根本没有余额接口"见 adapters.ts 头部注释。
  */
