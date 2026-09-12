@@ -125,6 +125,22 @@ deepseek/deepseek-flash                   ¥42.50
 从外部改 `settings.json` 必然被覆盖（实测被回写两次）。改成读套件配置后两边不再打架。
 设 `alpsPi.animationsFps: null` 可退回「交给 `/alps-pi` 面板 + settings.json」的原始行为。
 
+## 8. 隐藏 pi 自带 spinner（消除双帧源）
+
+**文件**：`vendor/alps-pi@0.3.3/src/features/animations/runtime.ts`
+**标记**：搜 `LOCAL PATCH (pi-tui-suite)：统一隐藏 pi 自带的 spinner`
+
+上游按每个动画的 `nativeIndicator`（`show`/`hide`）决定是否保留 pi 原生 spinner。
+但原生 spinner 是 **80 ms（12.5 fps）的独立计时器**，与 alps-pi 的动画计时器**同时**跑：
+两个帧源叠加时，`animations.fps` 只能省掉一部分 —— 实测（跑工具窗口）`fps=4` 仍占 63% CPU，
+而纯 4 fps 应约 25%。
+
+**改动**：`renderWorkingAnimationFrame()` 里把 `shouldHideIndicator` 恒为 `true`
+（动画被关闭时该函数提前返回，原生 spinner 照常显示）。
+
+**代价**：动画行不再叠一个转圈图标，只剩动画本身在动（4 fps 下仍看得出在动）。
+想要回原来的样子就删掉这一处改动。
+
 ---
 
 ## 上游同步流程

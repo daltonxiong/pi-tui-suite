@@ -415,8 +415,13 @@ function renderWorkingAnimationFrame(state: AnimationRuntimeState, ui: any): boo
 	const width = resolveAnimationWidth(state.settings.width, process.stdout.columns || 80);
 	const lines = renderAnimationFrame(animationName, state.frame, width, phase);
 	if (isAnimationDebugEnabled()) state.lastWorkingLineWidths = summarizeWorkingLineWidths(lines);
-	// 多行始终隐藏；单行根据动画语义决定，避免给自带运动主体的画面重复叠加 spinner。
-	const shouldHideIndicator = lines.length > 1 || getAnimation(animationName)?.nativeIndicator === "hide";
+	// ── LOCAL PATCH (pi-tui-suite)：统一隐藏 pi 自带的 spinner ──────────────
+	// 上游按动画的 nativeIndicator 决定是否保留原生 spinner（show/hide）；但原生 spinner 是
+	// 80ms（12.5 fps）的**独立计时器**，与 alps-pi 的动画计时器同时跑 ⇒ 两个帧源叠加，
+	// 降低 animations.fps 只能省掉一部分（实测工具窗口 63%，而纯 4 fps 应约 25%）。
+	// 我们的动画本身就在动（哪怕 4 fps 也看得出），所以统一隐藏原生 spinner，只留一个帧源。
+	// 动画被关闭时本函数会提前返回（state.animating 为假），原生 spinner 照常显示。
+	const shouldHideIndicator = true;
 	syncWorkingIndicator(state, ui, shouldHideIndicator);
 	const firstLine = lines[0] ?? "Working...";
 	ui.setWorkingMessage(lines.length > 1 ? lines.join("\n") : firstLine);
