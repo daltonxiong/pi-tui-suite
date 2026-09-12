@@ -1,0 +1,28 @@
+{
+  "name": "pi-tui-suite",
+  "version": "0.1.0",
+  "description": "把 pi 的 TUI 美化插件（pi-open-tui / pi-rounded-tools / alps-pi）收敛成一个可自管的本地套件，并附带 footer 余额角标",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "tui",
+    "termux",
+    "android"
+  ],
+  "license": "MIT",
+  "author": "daltonxiong",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "files": [
+    "extensions",
+    "src",
+    "tools",
+    "README.md",
+    "LICENSE"
+  ]
+}
