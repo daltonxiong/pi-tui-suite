@@ -34,6 +34,8 @@ export type SuiteConfig = {
 	/** 圆角工具框（pi-rounded-tools）。默认 false = 只留 alps-pi 那一层框 */
 	roundedFrames: { enabled: boolean };
 	header: { enabled: boolean };
+	/** 复制净化：选中/复制时剥掉线框装饰（│、╭─╮ 等），默认开 */
+	copyClean: { enabled: boolean };
 	/** 渲染探针（性能诊断，默认关闭；开启时每秒往日志写一行帧率/帧耗时） */
 	probe: { enabled: boolean; summarySeconds: number; stackEverySeconds: number };
 	/** V8 采样剖分（性能诊断，默认关闭） */
@@ -60,6 +62,7 @@ export const DEFAULT_CONFIG: SuiteConfig = {
 	alpsPi: { enabled: true, animationsFps: 4 },
 	roundedFrames: { enabled: false },
 	header: { enabled: true },
+	copyClean: { enabled: true },
 	probe: { enabled: false, summarySeconds: 1, stackEverySeconds: 20 },
 	profile: { enabled: false, windowSeconds: 10, topN: 18, samplingIntervalUs: 500 },
 	balance: {
@@ -102,6 +105,7 @@ export function loadSuiteConfig(): SuiteConfig {
 	const alpsPi = isRecord(raw.alpsPi) ? raw.alpsPi : {};
 	const roundedFrames = isRecord(raw.roundedFrames) ? raw.roundedFrames : {};
 	const header = isRecord(raw.header) ? raw.header : {};
+	const copyClean = isRecord(raw.copyClean) ? raw.copyClean : {};
 	const probe = isRecord(raw.probe) ? raw.probe : {};
 	const profile = isRecord(raw.profile) ? raw.profile : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
@@ -139,6 +143,9 @@ export function loadSuiteConfig(): SuiteConfig {
 		},
 		header: {
 			enabled: typeof header.enabled === "boolean" ? header.enabled : defaults.header.enabled,
+		},
+		copyClean: {
+			enabled: typeof copyClean.enabled === "boolean" ? copyClean.enabled : defaults.copyClean.enabled,
 		},
 		probe: {
 			enabled: typeof probe.enabled === "boolean" ? probe.enabled : defaults.probe.enabled,

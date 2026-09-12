@@ -25,6 +25,7 @@ import roundedTools from "../vendor/pi-rounded-tools@0.1.3/extensions/rounded-to
 import { applyAnimationsFps, installAlpsPi } from "../src/alps-pi/index.ts";
 import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
+import { installCopyClean } from "../src/copy-clean/index.ts";
 import { installHeader } from "../src/header/index.ts";
 import { startAutoProfiler } from "../src/perf/profile.ts";
 import { installRenderProbe } from "../src/perf/probe.ts";
@@ -60,7 +61,13 @@ export default function (pi: ExtensionAPI): void {
 		}
 	}
 
-	// 2) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）
+	// 2) 复制净化：选中/复制时剥掉线框装饰（原型补丁，session_shutdown 时还原）
+	const uninstallCopyClean = installCopyClean(config.copyClean.enabled, log);
+	if (config.copyClean.enabled) {
+		pi.on("session_shutdown", () => uninstallCopyClean());
+	}
+
+	// 3) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）
 	if (config.balance.enabled) {
 		installBalanceStatus(pi, config.balance, log);
 	}
