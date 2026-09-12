@@ -1,16 +1,17 @@
 /**
  * 渲染探针（性能诊断，默认关闭）
  *
- * 为什么需要：pi-tui 没有视口虚拟化，每帧都会重渲染整个会话；而「每秒几帧」「每帧多少毫秒」
- * 「谁在请求重绘」这三件事在 fullscreen 模式下没有任何现成口子
+ * 为什么需要：pi-tui 没有视口虚拟化，每帧都会重渲染整个会话；而 fullscreen 模式下
+ * 「每秒几帧」「每帧多少毫秒」「谁在请求重绘」都没有现成口子
  * （`PI_TUI_DEBUG_REDRAW` 只对 regular 模式有效，alt-screen 渲染器没有日志）。
- * 这里直接给渲染器原型打桩：
  *
- *   - `TuiAltScreen/TuiMainScreen.prototype.doRender` 调用次数 + 耗时（avg/max）→ 每秒一行
- *   - `requestRender` 调用次数 → 若有「自我触发」的重绘循环，这里的数字会远大于帧数
- *   - 每 stackEverySeconds 秒抓一次 `requestRender` 的调用栈（去重前几帧）→ 定位请求来源
+ * 探针提供三件事：
+ *   1. `TuiAltScreen/TuiMainScreen.prototype.doRender` 的调用次数与耗时（avg/max）→ 每秒一行
+ *   2. 同原型 `requestRender` 的调用次数（与帧数对比可看出是否存在重绘循环）
+ *   3. 调用栈采样：`requestRender` 的调用方，以及 **alps-pi 防抖重绘定时器的创建方**
+ *      （后者的栈才是「谁在请求」——渲染时的栈会被 33 ms 防抖吞掉）
  *
- * 关闭时零开销（不 patch 任何东西）。
+ * 关闭时零开销（不 patch 任何东西）；开启后只加 `performance.now()` 与定时器包装。
  */
 
 import { TuiAltScreen, TuiMainScreen } from "@earendil-works/pi-tui";
@@ -24,59 +25,61 @@ export type ProbeOptions = {
 	stackEverySeconds: number;
 };
 
-type Bucket = { frames: number; requests: number; totalMs: number; maxMs: number };
+type Bucket = { frames: number; requests: number; totalMs: number; maxMs: number; debounceTimers: number };
+
 const PATCH_FLAG = "__piTuiSuiteProbePatched";
+const TIMER_PATCH_FLAG = "__piTuiSuiteTimerProbePatched";
+/** alps-pi 防抖重绘定时器的特征串（回调体里含 `renderPendingFull`） */
+const DEBOUNCE_TIMER_MARKER = "renderPendingFull";
 
 export function installRenderProbe(options: ProbeOptions, log: Logger): void {
 	if (!options.enabled) return;
 
-	let bucket: Bucket = { frames: 0, requests: 0, totalMs: 0, maxMs: 0 };
+	let bucket: Bucket = { frames: 0, requests: 0, totalMs: 0, maxMs: 0, debounceTimers: 0 };
 	let lastSummary = Date.now();
-	let lastStack = Date.now();
+	let lastStack = 0;
 
 	const flush = (force = false): void => {
 		const now = Date.now();
 		const elapsedMs = now - lastSummary;
 		if (!force && elapsedMs < options.summarySeconds * 1000) return;
-		if (bucket.frames > 0 || bucket.requests > 0) {
+		if (bucket.frames > 0 || bucket.requests > 0 || bucket.debounceTimers > 0) {
 			const seconds = Math.max(0.001, elapsedMs / 1000);
+			const per = (value: number) => `${value} (${(value / seconds).toFixed(1)}/s)`;
 			log(
-				`probe frames=${bucket.frames} (${(bucket.frames / seconds).toFixed(1)}/s) ` +
-					`requests=${bucket.requests} (${(bucket.requests / seconds).toFixed(1)}/s) ` +
-					`avgFrame=${(bucket.totalMs / Math.max(1, bucket.frames)).toFixed(1)}ms ` +
-					`maxFrame=${bucket.maxMs.toFixed(1)}ms`,
+				`probe frames=${per(bucket.frames)} requests=${per(bucket.requests)} debounceTimers=${per(bucket.debounceTimers)} ` +
+					`avgFrame=${(bucket.totalMs / Math.max(1, bucket.frames)).toFixed(1)}ms maxFrame=${bucket.maxMs.toFixed(1)}ms`,
 			);
 		}
-		bucket = { frames: 0, requests: 0, totalMs: 0, maxMs: 0 };
+		bucket = { frames: 0, requests: 0, totalMs: 0, maxMs: 0, debounceTimers: 0 };
 		lastSummary = now;
 	};
 
-	const maybeStack = (): void => {
-		if (options.stackEverySeconds <= 0) return;
+	/** 按间隔抓一次调用栈（超限返回 undefined）。 */
+	const takeStack = (label: string): string | undefined => {
+		if (options.stackEverySeconds <= 0) return undefined;
 		const now = Date.now();
-		if (now - lastStack < options.stackEverySeconds * 1000) return;
+		if (lastStack !== 0 && now - lastStack < options.stackEverySeconds * 1000) return undefined;
 		lastStack = now;
 		try {
 			const frames = String(new Error().stack ?? "")
 				.split("\n")
 				.slice(2, 9)
 				.map((line) => line.trim().replace(/^at\s+/, ""))
-				.filter((line) => !line.includes("node:internal") && !line.includes("patchedRequestRender"))
+				.filter((line) => !line.includes("node:internal") && !line.includes("patched"))
 				.slice(0, 5);
-			log(`probe stack(requestRender 调用方): ${frames.join("  ←  ")}`);
+			const text = `${label}: ${frames.join("  ←  ")}`;
+			log(`probe ${text}`);
+			return text;
 		} catch {
-			// 拿不到调用栈就算了
+			return undefined;
 		}
 	};
 
 	let patchedCount = 0;
-	const patch = (label: string, candidate: unknown): void => {
+	const patchRenderer = (label: string, candidate: unknown): void => {
 		const prototype = (candidate as any)?.prototype;
-		if (!prototype || typeof prototype.doRender !== "function") {
-			log(`probe: ${label} 没有可用的 doRender，跳过`);
-			return;
-		}
-		if (prototype[PATCH_FLAG]) return;
+		if (!prototype || typeof prototype.doRender !== "function" || prototype[PATCH_FLAG]) return;
 
 		const originalRender = prototype.doRender;
 		prototype.doRender = function patchedDoRender(this: unknown, ...args: unknown[]) {
@@ -96,22 +99,44 @@ export function installRenderProbe(options: ProbeOptions, log: Logger): void {
 		if (typeof originalRequest === "function") {
 			prototype.requestRender = function patchedRequestRender(this: unknown, ...args: unknown[]) {
 				bucket.requests += 1;
-				maybeStack();
+				// 说明：这个栈通常只能看到 alps-pi 的防抖定时器（真正的调用方见 debounceTimer 那一行）
+				takeStack("stack(requestRender 调用方)");
 				return originalRequest.apply(this, args);
 			};
 		}
 
 		prototype[PATCH_FLAG] = true;
 		patchedCount += 1;
+		void label;
 	};
 
-	patch("TuiAltScreen", TuiAltScreen);
-	patch("TuiMainScreen", TuiMainScreen);
+	patchRenderer("TuiAltScreen", TuiAltScreen);
+	patchRenderer("TuiMainScreen", TuiMainScreen);
+
+	// 给 alps-pi 的防抖重绘定时器拍「创建栈」：这才是「谁在请求重绘」的答案
+	const globalAny = globalThis as any;
+	if (!globalAny[TIMER_PATCH_FLAG]) {
+		const originalSetTimeout = globalAny.setTimeout;
+		globalAny.setTimeout = function patchedSetTimeout(this: unknown, callback: unknown, delay?: number, ...rest: unknown[]) {
+			try {
+				if (typeof callback === "function" && (delay ?? 0) <= 500) {
+					if (Function.prototype.toString.call(callback).includes(DEBOUNCE_TIMER_MARKER)) {
+						bucket.debounceTimers += 1;
+						takeStack("debounceTimer 创建于");
+					}
+				}
+			} catch {
+				// 拍快照失败不能影响定时器本身
+			}
+			return originalSetTimeout.call(globalAny, callback as never, delay as never, ...(rest as never[]));
+		};
+		globalAny[TIMER_PATCH_FLAG] = true;
+	}
 
 	const timer = setInterval(() => flush(true), Math.max(250, Math.floor(options.summarySeconds * 500)));
 	timer.unref?.();
 	log(
 		`probe 启动：summary=${options.summarySeconds}s stack=${options.stackEverySeconds}s ` +
-			`patched=${patchedCount}/2（=0 说明扩展拿到的不是 pi 正在用的那份模块实例）`,
+			`patched=${patchedCount}/2（=0 且之前 reload 过 ⇒ 已挂载）`,
 	);
 }
