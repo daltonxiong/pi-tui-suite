@@ -16,6 +16,9 @@
   "pi": {
     "extensions": [
       "./extensions"
+    ],
+    "themes": [
+      "./vendor/alps-pi@0.3.3/themes"
     ]
   },
   "files": [
