@@ -113,8 +113,17 @@ deepseek/deepseek-flash                   ¥42.50
 写 `fps: 4` 会变成 16，并且 alps-pi 持久化时会把 16 **回写 settings.json**（实测被回写一次）。
 实测 16 fps 的动画在跑工具期间让 pi 常驻 **~100–114% CPU**（单帧 ~62ms）。
 
-**改动**：`ANIMATION_FPS_VALUES` 补上 `2,4,6`；两处默认值 `fps: 16 → 4`。
-这样无论谁回写、或 namespace 缺失走默认值，都是 4。（想要更丝滑可在 `/alps-pi` 里选 8/12。）
+**改动**（两层，缺一不可）：
+
+1. `ANIMATION_FPS_VALUES` 补上 `2,4,6`；两处默认值 `fps: 16 → 4`。
+2. **帧率改由套件配置决定**：`pi-tui-suite.json` 的 `alpsPi.animationsFps`（默认 4），
+   在 alps-pi 自己读完持久化设置之后（我们的 `session_start` handler 后注册 ⇒ 后执行）
+   通过它自己的 `configureAnimations()` + `writePersistedSettings()` 覆盖并回写。
+
+为什么必须第 2 层：alps-pi 会在启动读 `settings.json` 的 `alps-pi.animations.fps`，并在各种事件里
+把**内存里的整份设置写回**同一位置 —— 只要有一个「记着旧值」的实例活着，或文件里是旧值，
+从外部改 `settings.json` 必然被覆盖（实测被回写两次）。改成读套件配置后两边不再打架。
+设 `alpsPi.animationsFps: null` 可退回「交给 `/alps-pi` 面板 + settings.json」的原始行为。
 
 ---
 

@@ -78,7 +78,7 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 ```json
 {
   "log": "",
-  "alpsPi": { "enabled": true },
+  "alpsPi": { "enabled": true, "animationsFps": 4 },
   "header": { "enabled": true },
   "roundedFrames": { "enabled": false },
   "balance": {
@@ -96,6 +96,7 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | --- | --- | --- |
 | `log` | `""` | 诊断日志路径，空＝关闭（也可用环境变量 `PI_TUI_SUITE_LOG`） |
 | `alpsPi.enabled` | `true` | 线框 / 输入框 / 状态栏 / 动画 总开关 |
+| `alpsPi.animationsFps` | `4` | 启动时把动画帧率钉在该值（可选 `2/4/6/8/12/16/24/30`）。低帧率显著省 CPU；设 `null` 则交给 `/alps-pi` 面板控制 |
 | `header.enabled` | `true` | 顶部 header 开关 |
 | `roundedFrames.enabled` | `false` | 额外的圆角工具框（开启后与主框叠加为两层） |
 | `balance.enabled` | `true` | 余额角标开关 |

@@ -22,7 +22,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import roundedTools from "../vendor/pi-rounded-tools@0.1.3/extensions/rounded-tools.ts";
-import { installAlpsPi } from "../src/alps-pi/index.ts";
+import { applyAnimationsFps, installAlpsPi } from "../src/alps-pi/index.ts";
 import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
 import { installHeader } from "../src/header/index.ts";
@@ -40,6 +40,14 @@ export default function (pi: ExtensionAPI): void {
 	// 1) alps-pi：线框 + 输入框 + footer + 动画（含本地补丁）
 	if (config.alpsPi.enabled) {
 		installAlpsPi(pi);
+		// 「后注册的 handler 后执行」：确保在 alps-pi 自己读完持久化设置之后再钉帧率，
+		// 否则会被它加载的旧值覆盖（它就是那个把 fps 写回 16 的家伙）。
+		if (config.alpsPi.animationsFps !== null) {
+			pi.on("session_start", () => {
+				applyAnimationsFps(config.alpsPi.animationsFps);
+				log(`animations fps 已钉在 ${config.alpsPi.animationsFps}`);
+			});
+		}
 	}
 
 	// 2) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）

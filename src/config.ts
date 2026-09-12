@@ -25,7 +25,11 @@ export type BalanceProviderOverride = {
 export type SuiteConfig = {
 	log: string;
 	/** alps-pi（vendored）：消息/工具线框 + 固定输入框 + footer + 动画 */
-	alpsPi: { enabled: boolean };
+	alpsPi: {
+		enabled: boolean;
+		/** 启动时把动画帧率钉在该值（2/4/6/8/12/16/24/30）；null = 不干预，交给 /alps-pi 面板 */
+		animationsFps: number | null;
+	};
 	/** 顶部 header（从 pi-open-tui 抽出来的唯一活着的部分） */
 	/** 圆角工具框（pi-rounded-tools）。默认 false = 只留 alps-pi 那一层框 */
 	roundedFrames: { enabled: boolean };
@@ -49,7 +53,7 @@ export type SuiteConfig = {
 
 export const DEFAULT_CONFIG: SuiteConfig = {
 	log: "",
-	alpsPi: { enabled: true },
+	alpsPi: { enabled: true, animationsFps: 4 },
 	roundedFrames: { enabled: false },
 	header: { enabled: true },
 	balance: {
@@ -114,6 +118,12 @@ export function loadSuiteConfig(): SuiteConfig {
 		log: str(process.env.PI_TUI_SUITE_LOG, str(raw.log, defaults.log)),
 		alpsPi: {
 			enabled: typeof alpsPi.enabled === "boolean" ? alpsPi.enabled : defaults.alpsPi.enabled,
+			animationsFps:
+				alpsPi.animationsFps === null
+					? null
+					: typeof alpsPi.animationsFps === "number" && Number.isFinite(alpsPi.animationsFps)
+						? alpsPi.animationsFps
+						: defaults.alpsPi.animationsFps,
 		},
 		roundedFrames: {
 			enabled:
