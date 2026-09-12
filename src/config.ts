@@ -34,6 +34,8 @@ export type SuiteConfig = {
 	/** 圆角工具框（pi-rounded-tools）。默认 false = 只留 alps-pi 那一层框 */
 	roundedFrames: { enabled: boolean };
 	header: { enabled: boolean };
+	/** 渲染探针（性能诊断，默认关闭；开启时每秒往日志写一行帧率/帧耗时） */
+	probe: { enabled: boolean; summarySeconds: number; stackEverySeconds: number };
 	balance: {
 		enabled: boolean;
 		/** footer 角标前缀（现在默认空串：只显示「符号+金额」） */
@@ -56,6 +58,7 @@ export const DEFAULT_CONFIG: SuiteConfig = {
 	alpsPi: { enabled: true, animationsFps: 4 },
 	roundedFrames: { enabled: false },
 	header: { enabled: true },
+	probe: { enabled: false, summarySeconds: 1, stackEverySeconds: 20 },
 	balance: {
 		enabled: true,
 		label: "",
@@ -96,6 +99,7 @@ export function loadSuiteConfig(): SuiteConfig {
 	const alpsPi = isRecord(raw.alpsPi) ? raw.alpsPi : {};
 	const roundedFrames = isRecord(raw.roundedFrames) ? raw.roundedFrames : {};
 	const header = isRecord(raw.header) ? raw.header : {};
+	const probe = isRecord(raw.probe) ? raw.probe : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
 	if (isRecord(balance.providers)) {
 		for (const [key, value] of Object.entries(balance.providers)) {
@@ -131,6 +135,11 @@ export function loadSuiteConfig(): SuiteConfig {
 		},
 		header: {
 			enabled: typeof header.enabled === "boolean" ? header.enabled : defaults.header.enabled,
+		},
+		probe: {
+			enabled: typeof probe.enabled === "boolean" ? probe.enabled : defaults.probe.enabled,
+			summarySeconds: num(probe.summarySeconds, defaults.probe.summarySeconds, 0.25),
+			stackEverySeconds: num(probe.stackEverySeconds, defaults.probe.stackEverySeconds, 0),
 		},
 		balance: {
 			enabled: typeof balance.enabled === "boolean" ? balance.enabled : defaults.balance.enabled,
