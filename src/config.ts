@@ -24,16 +24,24 @@ export type BalanceProviderOverride = {
 
 export type SuiteConfig = {
 	log: string;
+	/** alps-pi（vendored）：消息/工具线框 + 固定输入框 + footer + 动画 */
+	alpsPi: { enabled: boolean };
+	/** 顶部 header（从 pi-open-tui 抽出来的唯一活着的部分） */
+	/** 圆角工具框（pi-rounded-tools）。默认 false = 只留 alps-pi 那一层框 */
+	roundedFrames: { enabled: boolean };
+	header: { enabled: boolean };
 	balance: {
 		enabled: boolean;
-		/** footer 角标前缀，默认 "余 "；设空串只显示金额 */
+		/** footer 角标前缀（现在默认空串：只显示「符号+金额」） */
 		label: string;
-		/** 自动刷新间隔（分钟）；turn_end 时只在超过该间隔后刷新 */
-		refreshMinutes: number;
+		/** 轮询/节流间隔（秒）。默认 10s：既能看到花费，也不至于把 provider 打爆。 */
+		refreshSeconds: number;
 		/** ctx.ui.setStatus 用的 key（同 key 会覆盖） */
 		statusKey: string;
 		/** 网络超时（毫秒） */
 		timeoutMs: number;
+		/** 连续失败时的退避上限（秒）—— 429/5xx 时不会一直每 10s 撞一次 */
+		maxBackoffSeconds: number;
 		/** 按 provider id 子串覆盖/新增适配器，例如 { "my-gateway": { "url": "...", "kind": "deepseek" } } */
 		providers: Record<string, BalanceProviderOverride>;
 	};
@@ -41,12 +49,16 @@ export type SuiteConfig = {
 
 export const DEFAULT_CONFIG: SuiteConfig = {
 	log: "",
+	alpsPi: { enabled: true },
+	roundedFrames: { enabled: false },
+	header: { enabled: true },
 	balance: {
 		enabled: true,
-		label: "余 ",
-		refreshMinutes: 10,
+		label: "",
+		refreshSeconds: 10,
 		statusKey: "balance",
 		timeoutMs: 8000,
+		maxBackoffSeconds: 120,
 		providers: {},
 	},
 };
@@ -77,6 +89,9 @@ export function loadSuiteConfig(): SuiteConfig {
 	}
 
 	const balance = isRecord(raw.balance) ? raw.balance : {};
+	const alpsPi = isRecord(raw.alpsPi) ? raw.alpsPi : {};
+	const roundedFrames = isRecord(raw.roundedFrames) ? raw.roundedFrames : {};
+	const header = isRecord(raw.header) ? raw.header : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
 	if (isRecord(balance.providers)) {
 		for (const [key, value] of Object.entries(balance.providers)) {
@@ -89,14 +104,31 @@ export function loadSuiteConfig(): SuiteConfig {
 		}
 	}
 
+	// 旧字段 refreshMinutes 仍可写（向后兼容）：两者都没写就用默认 10s。
+	const legacyMinutes = num(balance.refreshMinutes, Number.NaN, 0);
+	const refreshSeconds = Number.isFinite(legacyMinutes)
+		? legacyMinutes * 60
+		: num(balance.refreshSeconds, defaults.balance.refreshSeconds, 1);
+
 	return {
 		log: str(process.env.PI_TUI_SUITE_LOG, str(raw.log, defaults.log)),
+		alpsPi: {
+			enabled: typeof alpsPi.enabled === "boolean" ? alpsPi.enabled : defaults.alpsPi.enabled,
+		},
+		roundedFrames: {
+			enabled:
+				typeof roundedFrames.enabled === "boolean" ? roundedFrames.enabled : defaults.roundedFrames.enabled,
+		},
+		header: {
+			enabled: typeof header.enabled === "boolean" ? header.enabled : defaults.header.enabled,
+		},
 		balance: {
 			enabled: typeof balance.enabled === "boolean" ? balance.enabled : defaults.balance.enabled,
 			label: str(balance.label, defaults.balance.label),
-			refreshMinutes: num(balance.refreshMinutes, defaults.balance.refreshMinutes, 0),
+			refreshSeconds,
 			statusKey: str(balance.statusKey, defaults.balance.statusKey),
 			timeoutMs: num(balance.timeoutMs, defaults.balance.timeoutMs, 500),
+			maxBackoffSeconds: num(balance.maxBackoffSeconds, defaults.balance.maxBackoffSeconds, 0),
 			providers,
 		},
 	};

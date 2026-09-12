@@ -1,39 +1,66 @@
 /**
  * pi-tui-suite —— 本地 TUI 套件（装配入口，pi 从这里加载）
  *
- * 为什么要有这个项目：见仓库根目录 README.md
- *   - 目前 TUI 观感由三个互相抢 slot 的第三方插件拼出来（pi-open-tui / pi-rounded-tools / alps-pi），
- *     其中 ~3,000 行是死代码或重复实现；且 alps-pi 的 chromeFrame 没有结果缓存，
- *     是长会话"每帧重渲染整个 transcript"成本的主项（`~/.pi/agent/docs/troubleshooting.md` ERR-013）。
- *   - 本仓库把它们收敛成一个可自管、可 git 追溯、可逐步替换的装配层。
+ * 目标：把原来由三个互相抢 slot 的第三方插件拼出来的 TUI 观感，收敛成**一个**可自管、
+ * 可 git 追溯、可逐步替换的本地套件。盘点/成本模型/切换与回滚步骤见仓库根 README.md。
  *
- * 阶段：
- *   阶段 1（已实现）：footer 余额角标 —— 与三个插件零冲突，纯增量。
- *   阶段 2（未开始）：把三个插件的"活着的部分"搬进来（vendor/ + tools/sync-upstream.sh）。
+ * 装配顺序有意义：
+ *   1. alps-pi（vendored）：它注册 chromeFrame 组件补丁、固定输入框（editor）、footer、
+ *      动画与 /alps-pi 命令。**必须最先装**，因为后面两个模块都要在它铺好的底子上工作
+ *      （余额角标内嵌的是它输入框的上边框；header 是独立 slot）。
+ *   2. 余额角标：只往 footer 状态里写一个字符串，走 ctx.ui.setStatus。
+ *   3. 圆角工具框（默认关）：开了就是「alps-pi 外框 + 圆角内框」两层。
+ *   4. 顶部 header（来自 pi-open-tui 的 header.ts + utils.ts）。
+ *
+ * 与第三方 npm 包的关系：本套件接管后，settings.json 里原来那三个包应改成
+ * `{ "source": "npm:xxx", "extensions": [] }`（停用但不卸载，一条命令即可回滚）。
  *
  * 加载方式：
- *   - ~/.pi/agent/settings.json 的 packages 里加 "../../projects/pi-tui-suite"
+ *   - settings.json 的 packages 里加 "../../projects/pi-tui-suite"
  *   - 或临时试用：pi -e ~/projects/pi-tui-suite/extensions/pi-tui-suite.ts
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import roundedTools from "../vendor/pi-rounded-tools@0.1.3/extensions/rounded-tools.ts";
+import { installAlpsPi } from "../src/alps-pi/index.ts";
 import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
+import { installHeader } from "../src/header/index.ts";
 import { createLogger } from "../src/log.ts";
 
 export default function (pi: ExtensionAPI): void {
 	const config = loadSuiteConfig();
 	const log = createLogger(config.log);
 
-	log(`loaded (balance=${config.balance.enabled ? "on" : "off"})`);
+	log(
+		`loaded (alpsPi=${config.alpsPi.enabled ? "on" : "off"} header=${config.header.enabled ? "on" : "off"} ` +
+			`roundedFrames=${config.roundedFrames.enabled ? "on" : "off"} balance=${config.balance.enabled ? "on" : "off"})`,
+	);
 
-	// ── 阶段 1：余额角标（footer status）────────────────────────────────
+	// 1) alps-pi：线框 + 输入框 + footer + 动画（含本地补丁）
+	if (config.alpsPi.enabled) {
+		installAlpsPi(pi);
+	}
+
+	// 2) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）
 	if (config.balance.enabled) {
 		installBalanceStatus(pi, config.balance, log);
 	}
 
-	// ── 阶段 2：合并三个第三方插件（尚未实现）────────────────────────────
-	// if (config.header.enabled) installHeader(pi, config.header);              // 来自 pi-open-tui
-	// if (config.roundedFrames.enabled) installRoundedFrames(pi);               // 来自 pi-rounded-tools
-	// installAlpsPi(pi, config.alpsPi);                                        // vendor/alps-pi@<ver>
+	// 3) 圆角工具框：默认关（一层框）。开了会与 alps-pi 的框叠成两层。
+	if (config.roundedFrames.enabled) {
+		roundedTools(pi);
+	}
+
+	// 4) 顶部 header（静态 logo；不需要就 config.header.enabled = false，省两行屏幕）
+	if (config.header.enabled) {
+		pi.on("session_start", (_event: unknown, ctx: any) => {
+			if (ctx?.mode !== "tui") return;
+			try {
+				installHeader(pi, ctx);
+			} catch (error) {
+				log(`header 安装失败: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		});
+	}
 }

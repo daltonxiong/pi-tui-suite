@@ -60,6 +60,8 @@ export type BottomInputFrameStatus = {
 	model: string | null;
 	thinking: string | null;
 	context: string | null;
+	/** LOCAL PATCH：内嵌到上边框的扩展状态（当前用于余额角标），紧跟在 context 后面 */
+	balance?: string | null;
 	elapsed: string | null;
 	sessionUsage?: SessionUsageSnapshot | null;
 	tokensPerSecond?: number | null;
@@ -103,11 +105,23 @@ const ALPS_THINKING_LABEL_COLORS: Readonly<Record<string, string>> = {
 };
 const INTERNAL_STATUS_KEYS = new Set(["alps-pi-bottom-input", "alps-pi-bottom-status", "alps-pi-last-prompt"]);
 
+// ── LOCAL PATCH (pi-tui-suite) ─────────────────────────────────────────────
+// 把指定 key 的 extension status **内嵌到输入框上边框**（紧跟在上下文进度条后面），
+// 不再占用下方的 statuses 聚合行。用途：footer 余额角标（只显示「符号+金额」，不带文字）。
+// 取消内嵌：把 key 从这里删掉，它就会自动回到下方 statuses 行。
+const LOCAL_INLINE_STATUS_KEYS = new Set(["balance"]);
+
 /** 渲染输入框附属状态；美化关闭时不读取 model/thinking/context/elapsed，只保留下方附属信息。 */
 export function renderBottomInputStatus(input: BottomInputStatusState): BottomInputStatusRender {
 	const safeWidth = Math.max(1, Math.floor(input.width));
 	const enabled = input.beautifiedInputEnabled;
-	const extensionStatuses = getVisibleExtensionStatuses(input.footerData);
+	const extensionEntries = getVisibleExtensionStatusEntries(input.footerData);
+	// LOCAL PATCH：内嵌到线框的状态（余额）在下边框上出现，不再进下方 statuses 行
+	const inlineStatuses = pickLocalInlineStatuses(extensionEntries);
+	const secondaryStatuses = extensionEntries
+		.filter(([key]) => !inlineStatuses.has(key))
+		.map(([, value]) => value);
+	const extensionStatuses = extensionEntries.map(([, value]) => value);
 	if (!enabled) {
 		return {
 			topLines: [],
@@ -137,25 +151,38 @@ export function renderBottomInputStatus(input: BottomInputStatusState): BottomIn
 		elapsedSeconds,
 		lastPrompt: input.lastPrompt,
 		extensionStatuses,
+		// LOCAL PATCH：内嵌状态也要进缓存键，否则余额变了不会重绘
+		inlineStatuses: [...inlineStatuses.entries()],
 		icons,
 	});
 
 	return {
 		topLines: [],
-		secondaryLines: renderExtensionStatusLines(extensionStatuses, safeWidth, input.theme),
+		secondaryLines: renderExtensionStatusLines(secondaryStatuses, safeWidth, input.theme),
 		lastPromptLines: renderLastPromptLines(input.lastPrompt, safeWidth, input.theme),
-		frameStatus: renderFrameStatus({ ...input, width: safeWidth, icons }, modelName, thinking, usage, sessionUsage),
+		frameStatus: renderFrameStatus(
+			{ ...input, width: safeWidth, icons },
+			modelName,
+			thinking,
+			usage,
+			sessionUsage,
+			inlineStatuses.get("balance") ?? null,
+		),
 		cacheKey,
 	};
 }
 
 /** 渲染输入框边框要嵌入的 model/thinking/context/elapsed。 */
-export function renderFrameStatus(input: BottomInputStatusState & { icons?: BottomInputIconSet }, modelName = readModelName(input.ctx), thinkingLevel = readThinkingLevel(input.ctx) ?? input.currentThinkingLevel ?? readThinkingLevelFromSession(input.ctx), usage = readContextUsageSnapshot(input.ctx, input.isStreaming, input.liveUsage, input.latestAssistantUsage), sessionUsage = readSessionUsageSnapshot(input.ctx)): BottomInputFrameStatus {
+export function renderFrameStatus(input: BottomInputStatusState & { icons?: BottomInputIconSet }, modelName = readModelName(input.ctx), thinkingLevel = readThinkingLevel(input.ctx) ?? input.currentThinkingLevel ?? readThinkingLevelFromSession(input.ctx), usage = readContextUsageSnapshot(input.ctx, input.isStreaming, input.liveUsage, input.latestAssistantUsage), sessionUsage = readSessionUsageSnapshot(input.ctx), 
+	// LOCAL PATCH：余额角标文本（由 renderBottomInputStatus 从 extension statuses 里摘出来传入）
+	inlineBalance: string | null = null,
+): BottomInputFrameStatus {
 	const icons = input.icons ?? getBottomInputIcons();
 	return {
 		model: renderModelSegment(modelName, input.theme, icons),
 		thinking: renderThinkingSegment(thinkingLevel, input.theme),
 		context: renderContextSegment(usage, icons),
+		balance: inlineBalance ? safeFg(input.theme, "muted", inlineBalance) : null,
 		elapsed: renderElapsedSegment(input.theme, input.sessionStartTime, input.now, icons),
 		sessionUsage,
 		tokensPerSecond: input.tokensPerSecond ?? null,
@@ -187,8 +214,8 @@ export function renderLastPromptLines(prompt: string, width: number, theme: Them
 	return [truncateToWidth(`${prefix}${safeFg(theme, "muted", value)}`, safeWidth, "…", false)];
 }
 
-/** 从 footerData.getExtensionStatuses() 读取并过滤可展示状态。 */
-export function getVisibleExtensionStatuses(footerData: any): string[] {
+/** 从 footerData.getExtensionStatuses() 读取并过滤可展示状态（保留 key）。 */
+export function getVisibleExtensionStatusEntries(footerData: any): Array<[string, string]> {
 	let statuses: unknown;
 	try {
 		statuses = footerData?.getExtensionStatuses?.();
@@ -200,7 +227,7 @@ export function getVisibleExtensionStatuses(footerData: any): string[] {
 		: isRecord(statuses)
 			? Object.entries(statuses)
 			: [];
-	const visible: string[] = [];
+	const visible: Array<[string, string]> = [];
 	for (const [key, value] of entries) {
 		if (typeof key === "string" && INTERNAL_STATUS_KEYS.has(key)) continue;
 		if (typeof value !== "string") continue;
@@ -208,9 +235,23 @@ export function getVisibleExtensionStatuses(footerData: any): string[] {
 		if (!normalized) continue;
 		if (normalized.trimStart().startsWith("[")) continue;
 		if (visibleWidth(stripAnsi(normalized)) <= 0) continue;
-		visible.push(normalized);
+		visible.push([typeof key === "string" ? key : String(key), normalized]);
 	}
 	return visible;
+}
+
+/** LOCAL PATCH：从可见状态里挑出要内嵌到线框的（key → 文本）。 */
+function pickLocalInlineStatuses(entries: ReadonlyArray<[string, string]>): Map<string, string> {
+	const picked = new Map<string, string>();
+	for (const [key, value] of entries) {
+		if (LOCAL_INLINE_STATUS_KEYS.has(key)) picked.set(key, value);
+	}
+	return picked;
+}
+
+/** 从 footerData.getExtensionStatuses() 读取并过滤可展示状态。 */
+export function getVisibleExtensionStatuses(footerData: any): string[] {
+	return getVisibleExtensionStatusEntries(footerData).map(([, value]) => value);
 }
 
 /** 压缩 prompt 到单行，并在进入 footer/fixed 展示链路前剥离危险终端控制序列。 */

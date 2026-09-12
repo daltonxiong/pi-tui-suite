@@ -98,6 +98,12 @@ type CollapsedToolRenderFingerprint = {
 
 // 缓存键随终端内联图片抑制语义升级，避免热加载复用带图片占位的旧输出。
 const RENDER_CACHE_KEY = Symbol.for("alps.pi.renderCache.v6");
+// ── LOCAL PATCH (pi-tui-suite) ───────────────────────────────────────────────
+// 早退缓存：上游把缓存检查放在 innerKey = displayedLines.join("\n") **之后**，
+// 而 containsImageLine / compactToolLines / estimateContextContribution /
+// collapsedSignature join / createTimingContentKey 都在它之前 —— 长会话下单帧 ~62ms。
+// 这里在拿到 innerLines（pi 组件内容未变时返回同一数组引用）后立即比对，命中直接返回。
+const LOCAL_RENDER_CACHE_KEY = Symbol.for("pi-tui-suite.alpsChromeRenderCache.v1");
 const COLLAPSED_TOOL_RENDER_KEY = Symbol.for("alps.pi.collapsedToolRender.v1");
 const TIMING_STATE_KEY = Symbol.for("alps.pi.timingState.v1");
 const TRACKED_SETTINGS_KEY = Symbol.for("alps.pi.trackedSettings.v1");
@@ -1005,6 +1011,36 @@ export function createWrappedRender(
 			}
 			innerWidth = unframedAssistant ? numericWidth : Math.max(1, numericWidth - 4);
 			innerLines = asLines(originalRender.call(instance, innerWidth));
+
+			// ── LOCAL PATCH (pi-tui-suite)：早退缓存 ─────────────────────────
+			// 只缓存 settled 帧（非流式、status 非 pending、非 collapsed 聚合、非 unframed 直出）：
+			// 活跃帧的耗时文本每秒都在变，缓存会把计时冻住；settled 帧按上游自己的规则「完成后冻结」，可安全复用。
+			// 键 = 所有影响输出的廉价字段 + innerLines 数组引用（内容不变就是同一引用）。
+			const localCacheable = instance?.isPartial !== true
+				&& status !== "pending"
+				&& !collapsedMode
+				&& !unframedAssistant;
+			let localKey = "";
+			if (localCacheable) {
+				localKey = [
+					numericWidth,
+					createStyleSignature(id, renderKind, status, toolName, config, state.configVersion, Boolean(instance?.expanded)),
+					String(instance?.expanded ?? ""),
+					String(instance?.hideComponent ?? ""),
+					String(instance?.argsComplete ?? ""),
+					String(instance?.showImages ?? ""),
+					String(instance?.imageWidthCells ?? ""),
+					String(instance?.executionStarted ?? ""),
+					String(instance?.convertedImages instanceof Map ? instance.convertedImages.size : ""),
+				].join("\u0001");
+				const localCache = (instance as any)[LOCAL_RENDER_CACHE_KEY] as
+					| { key: string; inner: readonly string[]; lines: string[] }
+					| undefined;
+				if (localCache && localCache.key === localKey && localCache.inner === innerLines) {
+					branch = "localCache";
+					return debugReturn ? debugReturn(localCache.lines, branch) : localCache.lines;
+				}
+			}
 			const hasSuppressedImage = Boolean(extra.suppressInlineImages) && containsImageLine(innerLines);
 			const visibleInnerLines = hasSuppressedImage ? suppressInlineImageRows(innerLines) : innerLines;
 			// 当前终端不显示图片：不输出 Kitty/iTerm payload，也不保留 Pi 为图片分配的高度占位。
@@ -1042,6 +1078,8 @@ export function createWrappedRender(
 				}
 				branch = unframedAssistant ? "fallback" : "empty";
 				const lines = unframedAssistant ? innerLines : [];
+				// LOCAL PATCH：空 frame 也缓存（否则每帧仍要付 estimateContextContribution + join 的开销）
+				if (localCacheable) (instance as any)[LOCAL_RENDER_CACHE_KEY] = { key: localKey, inner: innerLines, lines };
 				return debugReturn ? debugReturn(lines, branch) : lines;
 			}
 			let elapsedText = formatElapsedSincePrevious(timing);
@@ -1127,6 +1165,8 @@ export function createWrappedRender(
 					truncateContent,
 					truncateSuffix,
 				});
+			// LOCAL PATCH：记录早退缓存（settled 帧）
+			if (localCacheable) (instance as any)[LOCAL_RENDER_CACHE_KEY] = { key: localKey, inner: innerLines, lines };
 			(instance as any)[RENDER_CACHE_KEY] = { width: numericWidth, innerKey, styleKey, elapsedText, tokenText, lines } satisfies RenderCacheEntry;
 			return debugReturn ? debugReturn(lines, branch) : lines;
 		} catch (error) {

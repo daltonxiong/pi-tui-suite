@@ -46,7 +46,8 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
 
 function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string): string {
 	const leftLabel = joinStyledSegments([status.model, status.thinking], safeFg(theme, "borderMuted", " · "));
-	const rightLabel = status.context ?? "";
+	// LOCAL PATCH (pi-tui-suite)：余额角标紧跟在上下文进度条后面（status.balance 由 status.ts 内嵌）
+	const rightLabel = joinStyledSegments([status.context, status.balance ?? null], safeFg(theme, "borderMuted", " "));
 	return buildBorderLine({
 		width,
 		theme,
