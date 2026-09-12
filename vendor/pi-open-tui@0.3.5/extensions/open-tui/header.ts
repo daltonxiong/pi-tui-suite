@@ -165,6 +165,12 @@ export class OpenTuiHeader implements Component {
 	private readonly ctx: ExtensionContext;
 	private readonly frame = LOGO_FRAMES.length - 1;
 	private readonly tipCommands: string[];
+	// ── LOCAL PATCH (pi-tui-suite)：渲染结果缓存 ──────────────────────────
+	// 上游每帧都重画 logo（逐格 hasCell/hasPiece，带 split(" ") 分配）+ padRight（走 ANSI 宽度解析）。
+	// V8 采样剖分实测：只这一个组件的 render 就占 19% CPU（truncateToWidth ← padRight ← render@header.ts）。
+	// 头部内容只取决于「宽度 + 模型 + 思考等级 + cwd + 主题」，变化极少 ⇒ 直接缓存整帧输出。
+	private cachedKey = "";
+	private cachedLines: string[] = [];
 
 	constructor(pi: ExtensionAPI, ctx: ExtensionContext, _tui: TUI) {
 		this.pi = pi;
@@ -177,6 +183,16 @@ export class OpenTuiHeader implements Component {
 	}
 
 	render(width: number): string[] {
+		// LOCAL PATCH (pi-tui-suite)：命中缓存就直接返回（见字段处注释）
+		const cacheKey = [
+			width,
+			this.ctx.model?.provider ?? "",
+			this.ctx.model?.id ?? "",
+			this.pi.getThinkingLevel(),
+			this.ctx.cwd ?? "",
+			this.ctx.ui?.theme?.name ?? "",
+		].join("\u0001");
+		if (cacheKey === this.cachedKey && this.cachedLines.length > 0) return this.cachedLines;
 		const theme = this.ctx.ui.theme;
 		const paint = (s: string) => theme.fg("accent", s);
 		const muted = (s: string) => theme.fg("muted", s);
@@ -221,10 +237,18 @@ export class OpenTuiHeader implements Component {
 			lines.push(boxedLine(content, width, paint));
 		}
 		lines.push(borderLine("╰", "", "╯", width, paint));
-		return lines.map((line) => truncateToWidth(line, width, ""));
+		const rendered = lines.map((line) => truncateToWidth(line, width, ""));
+		// LOCAL PATCH (pi-tui-suite)：记缓存
+		this.cachedKey = cacheKey;
+		this.cachedLines = rendered;
+		return rendered;
 	}
 
-	invalidate(): void {}
+	invalidate(): void {
+		// LOCAL PATCH (pi-tui-suite)：主题/尺寸变化时 pi 会调 invalidate，清掉缓存即可
+		this.cachedKey = "";
+		this.cachedLines = [];
+	}
 
 	dispose(): void {}
 }

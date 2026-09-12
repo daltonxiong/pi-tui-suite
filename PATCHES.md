@@ -163,6 +163,24 @@ V8 采样剖分实测（跑工具窗口，10 s / 14166 个采样）：
 已存在就直接返回；`ensurePatchStateConfigTracking()` 只在未包过时才包一次。
 两处调用点都不传 `enabled`，配置面板也是原地改 `state.config.settings`（不整体替换），所以语义不变。
 
+## 10. header 渲染结果缓存（19% CPU）
+
+**文件**：`vendor/pi-open-tui@0.3.5/extensions/open-tui/header.ts`
+**标记**：搜 `LOCAL PATCH (pi-tui-suite)：渲染结果缓存`
+
+**上游问题**：header 的 `render(width)` **每帧**都重画 logo（逐格 `hasCell`/`hasPiece`，内部还在
+`split(" ")` 分配）+ 每个 `padRight()`（走 ANSI 宽度解析）。V8 采样剖分实测占 **19.1%** CPU：
+
+```
+1279.0ms  19.1%  truncateToWidth @ chunk-JVUZSMYM.js:552
+         ↳ truncateToWidth ← padRight@utils.ts ← render@header.ts ← render ← renderCached ← layoutComponent
+```
+
+而头部内容只取决于「宽度 + 模型 + 思考等级 + cwd + 主题」，几乎不变。
+
+**改动**：`render()` 先算上面的组合键命中缓存就直接返回；`invalidate()`（pi 在主题/尺寸变化时调用）
+清掉缓存。注意 `ctx.model` / `thinkingLevel` / `cwd` 变化都会改键 ⇒ 不会显示陈旧信息。
+
 ---
 
 ## 上游同步流程
