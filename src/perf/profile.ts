@@ -30,8 +30,11 @@ type ProfileNode = {
 	children?: number[];
 };
 
-export function startAutoProfiler(options: ProfileOptions, log: Logger): void {
+export function startAutoProfiler(pi: any, options: ProfileOptions, log: Logger): void {
 	if (!options.enabled) return;
+
+	let stopped = false;
+	let activeSession: Session | undefined;
 
 	const session = new Session();
 	session.connect();
@@ -112,8 +115,9 @@ export function startAutoProfiler(options: ProfileOptions, log: Logger): void {
 	};
 
 	const cycle = async (): Promise<void> => {
-		if (busy) return;
+		if (busy || stopped) return;
 		busy = true;
+		activeSession = session;
 		try {
 			await post("Profiler.enable");
 			await post("Profiler.setSamplingInterval", { interval: options.samplingIntervalUs });
@@ -126,11 +130,19 @@ export function startAutoProfiler(options: ProfileOptions, log: Logger): void {
 			log(`profile 失败: ${error instanceof Error ? error.message : String(error)}`);
 		} finally {
 			busy = false;
+			activeSession = undefined;
 		}
 	};
 
 	const timer = setInterval(() => void cycle(), options.windowSeconds * 1000 + 1000);
 	timer.unref?.();
 	void cycle();
+
+	// session_shutdown（/reload、/new、退出）时停掉：剖分定时器同样是进程级的。
+	pi?.on?.("session_shutdown", () => {
+		stopped = true;
+		clearInterval(timer);
+		void activeSession?.post("Profiler.disable", undefined, () => undefined);
+	});
 	log(`剖分器启动：每 ${options.windowSeconds}s 采一段，输出 top ${options.topN}`);
 }

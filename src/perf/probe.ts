@@ -32,14 +32,19 @@ const TIMER_PATCH_FLAG = "__piTuiSuiteTimerProbePatched";
 /** alps-pi 防抖重绘定时器的特征串（回调体里含 `renderPendingFull`） */
 const DEBOUNCE_TIMER_MARKER = "renderPendingFull";
 
-export function installRenderProbe(options: ProbeOptions, log: Logger): void {
+export function installRenderProbe(pi: any, options: ProbeOptions, log: Logger): void {
 	if (!options.enabled) return;
+
+	/** 卸载回调：恢复原型 / 定时器 / 全局 setTimeout，并停止日志。 */
+	const restores: Array<() => void> = [];
+	let stopped = false;
 
 	let bucket: Bucket = { frames: 0, requests: 0, totalMs: 0, maxMs: 0, debounceTimers: 0 };
 	let lastSummary = Date.now();
 	let lastStack = 0;
 
 	const flush = (force = false): void => {
+		if (stopped) return;
 		const now = Date.now();
 		const elapsedMs = now - lastSummary;
 		if (!force && elapsedMs < options.summarySeconds * 1000) return;
@@ -57,7 +62,7 @@ export function installRenderProbe(options: ProbeOptions, log: Logger): void {
 
 	/** 按间隔抓一次调用栈（超限返回 undefined）。 */
 	const takeStack = (label: string): string | undefined => {
-		if (options.stackEverySeconds <= 0) return undefined;
+		if (stopped || options.stackEverySeconds <= 0) return undefined;
 		const now = Date.now();
 		if (lastStack !== 0 && now - lastStack < options.stackEverySeconds * 1000) return undefined;
 		lastStack = now;
@@ -107,6 +112,11 @@ export function installRenderProbe(options: ProbeOptions, log: Logger): void {
 
 		prototype[PATCH_FLAG] = true;
 		patchedCount += 1;
+		restores.push(() => {
+			prototype.doRender = originalRender;
+			if (typeof originalRequest === "function") prototype.requestRender = originalRequest;
+			delete prototype[PATCH_FLAG];
+		});
 		void label;
 	};
 
@@ -131,10 +141,30 @@ export function installRenderProbe(options: ProbeOptions, log: Logger): void {
 			return originalSetTimeout.call(globalAny, callback as never, delay as never, ...(rest as never[]));
 		};
 		globalAny[TIMER_PATCH_FLAG] = true;
+		restores.push(() => {
+			globalAny.setTimeout = originalSetTimeout;
+			delete globalAny[TIMER_PATCH_FLAG];
+		});
 	}
 
 	const timer = setInterval(() => flush(true), Math.max(250, Math.floor(options.summarySeconds * 500)));
 	timer.unref?.();
+
+	// /reload、/new 都会触发 session_shutdown：那里把补丁和定时器撤干净。
+	// 这一步很关键 —— 原型补丁和定时器是**进程级**的，不撤就会跨 reload 一直跑（实测踩过）。
+	const uninstall = (): void => {
+		stopped = true;
+		clearInterval(timer);
+		for (const restore of restores.splice(0)) {
+			try {
+				restore();
+			} catch {
+				// 恢复失败不影响其它逻辑
+			}
+		}
+	};
+	pi?.on?.("session_shutdown", () => uninstall());
+	restores.push(() => clearInterval(timer));
 	log(
 		`probe 启动：summary=${options.summarySeconds}s stack=${options.stackEverySeconds}s ` +
 			`patched=${patchedCount}/2（=0 且之前 reload 过 ⇒ 已挂载）`,
