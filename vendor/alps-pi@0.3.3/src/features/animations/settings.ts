@@ -27,11 +27,16 @@ export const DEFAULT_ANIMATIONS_SETTINGS: AnimationsSettings = {
 	thinking: "shimmer",
 	tool: "pipeline",
 	width: "default",
-	fps: 16,
+	fps: 4, // LOCAL PATCH (pi-tui-suite)：默认 4（上游 16），见 ANIMATION_FPS_VALUES 上方注释
 };
 
 export const ANIMATION_WIDTH_VALUES: AnimationWidth[] = ["full", "default", 20, 40, 60, 80];
-export const ANIMATION_FPS_VALUES = [8, 12, 16, 24, 30] as const;
+// ── LOCAL PATCH (pi-tui-suite)：低帧率选项 + 默认 4 ─────────────────────────
+// 上游只允许 [8,12,16,24,30]，而 readFps() 对不在列表里的值是**静默回落默认值**
+// （写 fps: 4 会变成 16，且 alps-pi 持久化时会把 16 写回 settings.json）。
+// 实测：16 fps 动画在跑工具期间让 pi 持续 ~100–114% CPU（单帧 ~62ms，见 ERR-013），
+// 4 fps 则约 25%。这里补上低档位并把默认值调成 4。
+export const ANIMATION_FPS_VALUES = [2, 4, 6, 8, 12, 16, 24, 30] as const;
 
 export function cloneDefaultAnimationsSettings(): AnimationsSettings {
 	return { ...DEFAULT_ANIMATIONS_SETTINGS };

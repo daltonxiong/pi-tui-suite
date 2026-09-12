@@ -123,7 +123,7 @@ export const DEFAULT_SETTINGS: AlpsPiSettings = {
 		thinking: "shimmer",
 		tool: "pipeline",
 		width: "default",
-		fps: 16,
+		fps: 4, // LOCAL PATCH (pi-tui-suite)：默认 4（上游 16）—— 16fps 动画实测常驻 ~100% CPU
 	},
 	shortcuts: {
 		stashEditor: "alt+s",
