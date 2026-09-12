@@ -26,6 +26,7 @@ import { applyAnimationsFps, installAlpsPi } from "../src/alps-pi/index.ts";
 import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
 import { installHeader } from "../src/header/index.ts";
+import { startAutoProfiler } from "../src/perf/profile.ts";
 import { installRenderProbe } from "../src/perf/probe.ts";
 import { createLogger } from "../src/log.ts";
 
@@ -41,6 +42,9 @@ export default function (pi: ExtensionAPI): void {
 	// 0) 渲染探针（默认关闭；排查卡顿/掉帧时打开，见 README「开发辅助」）
 	if (config.probe.enabled) {
 		installRenderProbe(config.probe, log);
+	}
+	if (config.profile.enabled) {
+		startAutoProfiler(config.profile, log);
 	}
 
 	// 1) alps-pi：线框 + 输入框 + footer + 动画（含本地补丁）

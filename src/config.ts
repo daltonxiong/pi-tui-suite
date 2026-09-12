@@ -36,6 +36,8 @@ export type SuiteConfig = {
 	header: { enabled: boolean };
 	/** 渲染探针（性能诊断，默认关闭；开启时每秒往日志写一行帧率/帧耗时） */
 	probe: { enabled: boolean; summarySeconds: number; stackEverySeconds: number };
+	/** V8 采样剖分（性能诊断，默认关闭） */
+	profile: { enabled: boolean; windowSeconds: number; topN: number; samplingIntervalUs: number };
 	balance: {
 		enabled: boolean;
 		/** footer 角标前缀（现在默认空串：只显示「符号+金额」） */
@@ -59,6 +61,7 @@ export const DEFAULT_CONFIG: SuiteConfig = {
 	roundedFrames: { enabled: false },
 	header: { enabled: true },
 	probe: { enabled: false, summarySeconds: 1, stackEverySeconds: 20 },
+	profile: { enabled: false, windowSeconds: 10, topN: 18, samplingIntervalUs: 500 },
 	balance: {
 		enabled: true,
 		label: "",
@@ -100,6 +103,7 @@ export function loadSuiteConfig(): SuiteConfig {
 	const roundedFrames = isRecord(raw.roundedFrames) ? raw.roundedFrames : {};
 	const header = isRecord(raw.header) ? raw.header : {};
 	const probe = isRecord(raw.probe) ? raw.probe : {};
+	const profile = isRecord(raw.profile) ? raw.profile : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
 	if (isRecord(balance.providers)) {
 		for (const [key, value] of Object.entries(balance.providers)) {
@@ -140,6 +144,12 @@ export function loadSuiteConfig(): SuiteConfig {
 			enabled: typeof probe.enabled === "boolean" ? probe.enabled : defaults.probe.enabled,
 			summarySeconds: num(probe.summarySeconds, defaults.probe.summarySeconds, 0.25),
 			stackEverySeconds: num(probe.stackEverySeconds, defaults.probe.stackEverySeconds, 0),
+		},
+		profile: {
+			enabled: typeof profile.enabled === "boolean" ? profile.enabled : defaults.profile.enabled,
+			windowSeconds: num(profile.windowSeconds, defaults.profile.windowSeconds, 2),
+			topN: num(profile.topN, defaults.profile.topN, 3),
+			samplingIntervalUs: num(profile.samplingIntervalUs, defaults.profile.samplingIntervalUs, 100),
 		},
 		balance: {
 			enabled: typeof balance.enabled === "boolean" ? balance.enabled : defaults.balance.enabled,
