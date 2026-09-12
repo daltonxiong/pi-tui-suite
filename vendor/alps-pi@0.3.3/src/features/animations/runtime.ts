@@ -392,6 +392,13 @@ function requestAnimationsRender(state: AnimationRuntimeState): void {
 		const ui = getCurrentUi(state);
 		const renderedWorking = renderWorkingAnimationFrame(state, ui);
 		if (!renderedWorking && !hasAnimatedComponents) return;
+		// ── LOCAL PATCH (pi-tui-suite)：不要重复请求重绘 ─────────────────────
+		// `renderWorkingAnimationFrame()` 内部会调 `ui.setWorkingMessage(line)`，而 pi 的
+		// Loader.updateDisplay() 最后就是 `this.ui.requestRender()` ⇒ 已经排了一帧；
+		// 上游这里又请求一次 ⇒ **每个动画 tick 渲染两遍**（实测 fps=4 的动画跑出 8–10 帧/s）。
+		// 本 tick 的 `component.invalidate()` 在 setWorkingMessage 之前已完成，
+		// 所以那一帧会把动画组件一起画掉，这里直接返回。
+		if (renderedWorking) return;
 		if (animationsRenderRequest) {
 			animationsRenderRequest();
 		} else if (typeof ui?.requestRender === "function") {

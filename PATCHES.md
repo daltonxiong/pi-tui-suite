@@ -181,6 +181,21 @@ V8 采样剖分实测（跑工具窗口，10 s / 14166 个采样）：
 **改动**：`render()` 先算上面的组合键命中缓存就直接返回；`invalidate()`（pi 在主题/尺寸变化时调用）
 清掉缓存。注意 `ctx.model` / `thinkingLevel` / `cwd` 变化都会改键 ⇒ 不会显示陈旧信息。
 
+## 11. 动画 tick 不再重复请求重绘（帧率直接减半）
+
+**文件**：`vendor/alps-pi@0.3.3/src/features/animations/runtime.ts`
+**标记**：搜 `LOCAL PATCH (pi-tui-suite)：不要重复请求重绘`
+
+**上游问题**：`requestAnimationsRender()` 里 `renderWorkingAnimationFrame()` 会调用
+`ui.setWorkingMessage(line)`，而 pi 的 `Loader.updateDisplay()` 结尾就是
+`this.ui.requestRender()`（见 pi bundle 的 loader 实现）⇒ **一次动画 tick 排两帧**。
+实测：`animations.fps = 4`，但探针量到 **8–10 帧/s**、`debounceTimers = 4/s`，
+调用链也确认了请求方是动画计时器。
+
+**改动**：`renderedWorking` 为真时直接 `return`，不再走 `animationsRenderRequest()`。
+本 tick 的 `component.invalidate()` 在 `setWorkingMessage` 之前已完成，
+所以那一帧照样会把动画组件一起画掉。预期帧率 8–10/s → 4–5/s（渲染开销直接减半）。
+
 ---
 
 ## 上游同步流程
