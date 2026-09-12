@@ -96,7 +96,7 @@ for (const width of widths) {
 		["余额", "¥16.68"],
 		["下边框:输入 token", "1.2k"],
 		["下边框:输出 token", "340"],
-		["下边框:cache 命中率", "38.6%"],
+		["上边框:cache 命中率", "38.6%"],
 		["下边框:token 速度", "18.4tok/s"],
 		["下边框:耗时", "12s"],
 		["footer:扩展状态行(mcp-auth)", "Authenticating"],
@@ -116,5 +116,6 @@ for (const width of widths) {
 	if (missing.length > 0) console.log(`  ⇒ 被裁掉：${missing.join("、")}`);
 	else console.log("  ⇒ 全部显示");
 }
-console.log("\n说明：下边框指标按 cache → output → input → speed 的顺序依次被丢（elapsed 最后）；");
-console.log("      footer 的扩展状态行只在有扩展状态时出现，上一条问题行只在有历史输入时出现。");
+console.log("\n说明：cache 命中率已移到上边框（上下文进度条前面），所以窄屏也不会被裁；");
+console.log("     下边框其余指标按 output → input → speed 的顺序依次被丢（elapsed 最后，上游固定顺序）；");
+console.log("     footer 的扩展状态行只在有扩展状态时出现，上一条问题行只在有历史输入时出现。");

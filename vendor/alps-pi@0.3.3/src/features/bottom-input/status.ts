@@ -62,6 +62,8 @@ export type BottomInputFrameStatus = {
 	context: string | null;
 	/** LOCAL PATCH：内嵌到上边框的扩展状态（当前用于余额角标），紧跟在 context 后面 */
 	balance?: string | null;
+	/** LOCAL PATCH：cache 命中率（0–100）—— 放在上边框、上下文进度条前面；null = 不显示 */
+	cacheHitRate?: number | null;
 	elapsed: string | null;
 	sessionUsage?: SessionUsageSnapshot | null;
 	tokensPerSecond?: number | null;
@@ -172,6 +174,19 @@ export function renderBottomInputStatus(input: BottomInputStatusState): BottomIn
 	};
 }
 
+/** LOCAL PATCH (pi-tui-suite)：cache 命中率的可见性判定（与上游下边框那段同一套条件）。 */
+function readCacheHitRate(
+	inputMetrics: InputMetricsSettings | undefined,
+	sessionUsage: SessionUsageSnapshot | null | undefined,
+): number | null {
+	if (inputMetrics?.cacheHit === false) return null;
+	const usage = sessionUsage;
+	if (!usage) return null;
+	if (!(usage.cacheRead > 0 || usage.cacheWrite > 0)) return null;
+	const rate = usage.latestCacheHitRate;
+	return typeof rate === "number" && Number.isFinite(rate) ? rate : null;
+}
+
 /** 渲染输入框边框要嵌入的 model/thinking/context/elapsed。 */
 export function renderFrameStatus(input: BottomInputStatusState & { icons?: BottomInputIconSet }, modelName = readModelName(input.ctx), thinkingLevel = readThinkingLevel(input.ctx) ?? input.currentThinkingLevel ?? readThinkingLevelFromSession(input.ctx), usage = readContextUsageSnapshot(input.ctx, input.isStreaming, input.liveUsage, input.latestAssistantUsage), sessionUsage = readSessionUsageSnapshot(input.ctx), 
 	// LOCAL PATCH：余额角标文本（由 renderBottomInputStatus 从 extension statuses 里摘出来传入）
@@ -183,6 +198,8 @@ export function renderFrameStatus(input: BottomInputStatusState & { icons?: Bott
 		thinking: renderThinkingSegment(thinkingLevel, input.theme),
 		context: renderContextSegment(usage, icons),
 		balance: inlineBalance ? safeFg(input.theme, "muted", inlineBalance) : null,
+		// LOCAL PATCH (pi-tui-suite)：cache 命中率给上边框用（下边框那段已移除）
+		cacheHitRate: readCacheHitRate(input.inputMetrics, sessionUsage),
 		elapsed: renderElapsedSegment(input.theme, input.sessionStartTime, input.now, icons),
 		sessionUsage,
 		tokensPerSecond: input.tokensPerSecond ?? null,

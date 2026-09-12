@@ -37,18 +37,21 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
 	const width = Number.isFinite(input.width) ? Math.max(0, Math.floor(input.width)) : 0;
 	if (width < MIN_FRAME_WIDTH) return [...input.editorLines];
 	const editorLines = input.editorLines.length > 0 ? [...input.editorLines] : [""];
+	// LOCAL PATCH (pi-tui-suite)：cache 命中率从下边框移到上边框（放在上下文进度条前面）——
+	// 下边框是最先被裁剪的地方（48 列就只剩 speed+elapsed），放上边框才能保证看得见。
+	const cacheHitSegment = buildCacheHitSegment(input.status);
 	// ── LOCAL PATCH (pi-tui-suite)：窄屏（手机端）把 model 与 balance 提到输入框上方单独一行 ──
 	// 上游把 model·thinking 放左边、context 进度条（+余额）放右边；48 列的手机上两者挤不下，
 	// buildBorderLine() 会先截断右侧 ⇒ 余额直接看不见。放不下时改成：
 	//   上一行： 模型名（左） …… 余额（右）
 	//   边框行： ╭─ thinking ──── ▤━━━╸───── 42.3%/128k ─╮
 	// 宽度够（桌面 / 横屏）时保持上游原样。
-	const stackNarrowStatus = shouldStackNarrowStatus(width, input.status);
+	const stackNarrowStatus = shouldStackNarrowStatus(width, input.status, cacheHitSegment);
 	const frameStatus = stackNarrowStatus ? { ...input.status, model: null, balance: null } : input.status;
 	const stackedLine = stackNarrowStatus ? buildNarrowStatusTopLine(width, input.status) : "";
 	return [
 		...(stackedLine ? [stackedLine] : []),
-		buildTopBorder(width, input.theme, frameStatus, input.borderColor),
+		buildTopBorder(width, input.theme, frameStatus, input.borderColor, cacheHitSegment),
 		...editorLines.map((line) => renderContentLine(line, width, input.theme, input.borderColor)),
 		buildBottomBorder(width, input.theme, frameStatus, input.borderColor),
 	];
@@ -59,10 +62,24 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
  * 改用「上方单独一行放 model + balance」的堆叠布局。阈值现算（不是魔法数字）：
  * 两侧标签宽度 + 6（边框、空格、省略号余量）超过总宽就堆叠。
  */
-function shouldStackNarrowStatus(width: number, status: BottomInputFrameStatus): boolean {
+/**
+ * LOCAL PATCH (pi-tui-suite)：cache 命中率作为上边框的一段（放在上下文进度条前面）。
+ * 取值/配色与上游下边框那段一致，只是换了位置。
+ */
+function buildCacheHitSegment(status: BottomInputFrameStatus): string | null {
+	const rate = status.cacheHitRate;
+	if (typeof rate !== "number" || !Number.isFinite(rate)) return null;
+	const icons = status.icons ?? getBottomInputIcons();
+	return colorizeMetric(`${icons.cacheHit} ${rate.toFixed(1)}%`, cacheMetricColor(rate));
+}
+
+function shouldStackNarrowStatus(width: number, status: BottomInputFrameStatus, cacheHitSegment?: string | null): boolean {
 	if (!status.model && !status.balance) return false;
 	const leftPlain = [status.model, status.thinking].filter(Boolean).join(" · ");
-	const rightPlain = [status.context, status.balance].filter(Boolean).join(" ");
+	const rightPlain = [cacheHitSegment ?? "", status.context, status.balance]
+		.filter(Boolean)
+		.map((part) => String(part).replace(/\x1b\[[0-9;]*m/g, ""))
+		.join(" ");
 	if (visibleWidth(leftPlain) + visibleWidth(rightPlain) + 6 <= width) return false;
 	// 模型名和余额都没了（只剩 thinking / context）时堆叠没意义，交给上游的截断逻辑
 	return Boolean(status.balance || status.model);
@@ -79,10 +96,13 @@ function buildNarrowStatusTopLine(width: number, status: BottomInputFrameStatus)
 	return truncateToWidth(`${clippedModel}${" ".repeat(gap)}${balance}`, width, "");
 }
 
-function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string): string {
+function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string, cacheHitSegment?: string | null): string {
 	const leftLabel = joinStyledSegments([status.model, status.thinking], safeFg(theme, "borderMuted", " · "));
-	// LOCAL PATCH (pi-tui-suite)：余额角标紧跟在上下文进度条后面（status.balance 由 status.ts 内嵌）
-	const rightLabel = joinStyledSegments([status.context, status.balance ?? null], safeFg(theme, "borderMuted", " "));
+	// LOCAL PATCH (pi-tui-suite)：顺序 = cache 命中率 / 上下文进度条 / 余额
+	const rightLabel = joinStyledSegments(
+		[cacheHitSegment ?? null, status.context, status.balance ?? null],
+		safeFg(theme, "borderMuted", " "),
+	);
 	return buildBorderLine({
 		width,
 		theme,
@@ -133,12 +153,7 @@ function buildBottomMetricSegments(status: BottomInputFrameStatus): BottomMetric
 	if (visibility?.outputTokens !== false && usage && usage.output > 0) {
 		segments.push({ key: "output", value: colorizeMetric(`${icons.outputTokens} ${formatTokens(usage.output)}`, BOTTOM_METRIC_COLORS.output) });
 	}
-	if (visibility?.cacheHit !== false && usage && (usage.cacheRead > 0 || usage.cacheWrite > 0) && usage.latestCacheHitRate !== null) {
-		segments.push({
-			key: "cache",
-			value: colorizeMetric(`${icons.cacheHit} ${usage.latestCacheHitRate.toFixed(1)}%`, cacheMetricColor(usage.latestCacheHitRate)),
-		});
-	}
+	// LOCAL PATCH (pi-tui-suite)：cache 命中率已移到上边框（进度条前面），这里不再重复推入
 
 	const rate = status.tokensPerSecond;
 	if (visibility?.tokenSpeed !== false && typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
