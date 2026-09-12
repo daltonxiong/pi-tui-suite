@@ -21,8 +21,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------
-本仓库 src/ 下为原创代码（MIT，同上）。
-vendor/ 下为第三方插件的原样拷贝，版权归各自作者（均为 MIT）：
-  vendor/alps-pi@<ver>/        https://github.com/MrCKR/alps-pi
-  vendor/pi-open-tui@<ver>/    https://github.com/OldSuns/pi-open-tui
-  vendor/pi-rounded-tools@<ver>/ https://github.com/orionpax1997/pi-rounded-tools
+本仓库各部分许可：
+
+  src/  extensions/  tools/   本项目原创代码 —— MIT（同上）
+  vendor/                     第三方代码的原样拷贝（另有 PATCHES.md 记录的少量本地改动），
+                              版权与许可归各自作者，详见 THIRD-PARTY-NOTICES.md 与
+                              各目录内的 LICENSE 文件。三者均为 MIT：
+                                alps-pi           (c) 2026 MrCKR
+                                pi-open-tui       (c) 2026 pi-open-tui contributors
+                                pi-rounded-tools  (c) 2026 orionpax1997

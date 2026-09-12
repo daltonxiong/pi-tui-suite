@@ -1,7 +1,7 @@
 {
   "name": "pi-tui-suite",
   "version": "0.1.0",
-  "description": "把 pi 的 TUI 美化插件（pi-open-tui / pi-rounded-tools / alps-pi）收敛成一个可自管的本地套件，并附带 footer 余额角标",
+  "description": "pi 的本地 TUI 套件：消息/工具线框、固定输入框、底部状态栏、顶部 header、账户余额角标，并为手机端窄终端优化布局与性能",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -24,11 +24,22 @@
   "files": [
     "extensions",
     "src",
+    "vendor",
     "tools",
     "README.md",
+    "PATCHES.md",
+    "THIRD-PARTY-NOTICES.md",
     "LICENSE"
   ],
   "dependencies": {
     "proper-lockfile": "^4.1.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/daltonxiong/pi-tui-suite.git"
+  },
+  "homepage": "https://github.com/daltonxiong/pi-tui-suite#readme",
+  "bugs": {
+    "url": "https://github.com/daltonxiong/pi-tui-suite/issues"
   }
 }
