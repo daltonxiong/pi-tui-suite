@@ -28,7 +28,7 @@ const theme = {
 };
 
 const status = {
-	model: "deepseek-flash",
+	model: "deepseek/deepseek-flash",
 	thinking: "medium",
 	// 进度条就用真字符串（含 no-ANSI）
 	context: "▤━━━━━━━╸── 42.3%/128k",

@@ -286,6 +286,11 @@ function emptyFrameStatus(): BottomInputFrameStatus {
 function renderModelSegment(modelName: string | null, theme: ThemeLike, _icons: BottomInputIconSet): string | null {
 	if (!modelName) return null;
 	// 线框规格固定只显示模型名，避免 Nerd Font 图标破坏 “model · thinking” 布局。
+	// LOCAL PATCH (pi-tui-suite)：`provider/model` 里的 provider 用弱色，主体仍然用 accent
+	const slash = modelName.indexOf("/");
+	if (slash > 0) {
+		return `${safeFg(theme, "borderMuted", modelName.slice(0, slash + 1))}${safeFg(theme, "accent", modelName.slice(slash + 1))}`;
+	}
 	return safeFg(theme, "accent", modelName);
 }
 
@@ -457,7 +462,13 @@ function readModelContextWindow(ctx: any): number {
 
 function readModelName(ctx: any): string | null {
 	try {
-		return normalizeModelName(ctx?.model?.name || ctx?.model?.id);
+		// ── LOCAL PATCH (pi-tui-suite) ───────────────────────────────────────
+		// 上游只显示模型名（normalizeModelName 会把 provider 前缀剥掉）；这里改成
+		// 「provider/model」形式，跟 pi 自己的写法、跟顶部 header 的 formatModelLabel 一致。
+		const base = normalizeModelName(ctx?.model?.name || ctx?.model?.id);
+		const provider = typeof ctx?.model?.provider === "string" ? ctx.model.provider.trim() : "";
+		if (!base) return null;
+		return provider ? `${provider}/${base}` : base;
 	} catch {
 		return null;
 	}
