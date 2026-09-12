@@ -4,7 +4,7 @@ import { CURSOR_MARKER, truncateToWidth, visibleWidth } from "@earendil-works/pi
 import { sanitizeTerminalText } from "../../terminal-sanitizer.ts";
 import type { ThemeLike } from "../chrome-frame/styles.ts";
 import { getBottomInputIcons } from "./icons.ts";
-import { formatTokens, formatUsd, type BottomInputFrameStatus } from "./status.ts";
+import { formatTokens, type BottomInputFrameStatus } from "./status.ts";
 
 export type BeautifiedEditorFrameInput = {
 	/** 原始 editor 渲染行。 */
@@ -39,7 +39,7 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
 	const editorLines = input.editorLines.length > 0 ? [...input.editorLines] : [""];
 	// LOCAL PATCH (pi-tui-suite)：cache 命中率从下边框移到上边框（放在上下文进度条前面）——
 	// 下边框是最先被裁剪的地方（48 列就只剩 speed+elapsed），放上边框才能保证看得见。
-	const cacheHitSegment = buildCacheHitSegment(input.status, input.theme);
+	const cacheHitSegment = buildCacheHitSegment(input.status);
 	// ── LOCAL PATCH (pi-tui-suite)：窄屏（手机端）把 model 与 balance 提到输入框上方单独一行 ──
 	// 上游把 model·thinking 放左边、context 进度条（+余额）放右边；48 列的手机上两者挤不下，
 	// buildBorderLine() 会先截断右侧 ⇒ 余额直接看不见。放不下时改成：
@@ -48,12 +48,10 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
 	// 宽度够（桌面 / 横屏）时保持上游原样。
 	const stackNarrowStatus = shouldStackNarrowStatus(width, input.status, cacheHitSegment);
 	const frameStatus = stackNarrowStatus ? { ...input.status, model: null, balance: null } : input.status;
-	const stackedLine = stackNarrowStatus ? buildNarrowStatusTopLine(width, input.status, input.theme) : "";
-	// 堆叠时花费已经在上面那一行，边框不再重复（否则窄屏会把 $x.xx 截成 $0.00…）
-	const costSegment = stackNarrowStatus ? null : buildSessionCostSegment(input.status, input.theme);
+	const stackedLine = stackNarrowStatus ? buildNarrowStatusTopLine(width, input.status) : "";
 	return [
 		...(stackedLine ? [stackedLine] : []),
-		buildTopBorder(width, input.theme, frameStatus, input.borderColor, cacheHitSegment, costSegment),
+		buildTopBorder(width, input.theme, frameStatus, input.borderColor, cacheHitSegment),
 		...editorLines.map((line) => renderContentLine(line, width, input.theme, input.borderColor)),
 		buildBottomBorder(width, input.theme, frameStatus, input.borderColor),
 	];
@@ -68,67 +66,41 @@ export function renderBeautifiedEditorFrame(input: BeautifiedEditorFrameInput): 
  * LOCAL PATCH (pi-tui-suite)：cache 命中率作为上边框的一段（放在上下文进度条前面）。
  * 取值/配色与上游下边框那段一致，只是换了位置。
  */
-function buildCacheHitSegment(status: BottomInputFrameStatus, theme: ThemeLike): string | null {
+function buildCacheHitSegment(status: BottomInputFrameStatus): string | null {
 	const rate = status.cacheHitRate;
-	const misses = status.cacheMissCount;
+	if (typeof rate !== "number" || !Number.isFinite(rate)) return null;
 	const icons = status.icons ?? getBottomInputIcons();
-	const parts: string[] = [];
-	if (typeof rate === "number" && Number.isFinite(rate)) {
-		parts.push(colorizeMetric(`${icons.cacheHit} ${rate.toFixed(1)}%`, cacheMetricColor(rate)));
-	}
-	// LOCAL PATCH：显著 cache miss 次数（>0 才显示；用警示色，一眼能看出来）
-	if (typeof misses === "number" && Number.isFinite(misses) && misses > 0) {
-		parts.push(`${safeFg(theme, "borderMuted", " ")}${safeFg(theme, "warning", `✗${misses}`)}`);
-	}
-	return parts.length > 0 ? parts.join("") : null;
-}
-
-/** LOCAL PATCH：会话累计花费（USD）—— 紧跟在余额后面 / 窄屏时上提到堆叠行。 */
-function buildSessionCostSegment(status: BottomInputFrameStatus, theme: ThemeLike): string | null {
-	const cost = status.sessionCost;
-	if (typeof cost !== "number" || !Number.isFinite(cost)) return null;
-	return safeFg(theme, "dim", formatUsd(cost));
+	return colorizeMetric(`${icons.cacheHit} ${rate.toFixed(1)}%`, cacheMetricColor(rate));
 }
 
 function shouldStackNarrowStatus(width: number, status: BottomInputFrameStatus, cacheHitSegment?: string | null): boolean {
-	if (!status.model && !status.balance && status.sessionCost === null) return false;
+	if (!status.model && !status.balance) return false;
 	const leftPlain = [status.model, status.thinking].filter(Boolean).join(" · ");
-	const rightPlain = [cacheHitSegment ?? "", status.context, costPlain(status), status.balance]
+	const rightPlain = [cacheHitSegment ?? "", status.context, status.balance]
 		.filter(Boolean)
 		.map((part) => String(part).replace(/\x1b\[[0-9;]*m/g, ""))
 		.join(" ");
 	if (visibleWidth(leftPlain) + visibleWidth(rightPlain) + 6 <= width) return false;
 	// 模型名和余额都没了（只剩 thinking / context）时堆叠没意义，交给上游的截断逻辑
-	return Boolean(status.balance || status.model || typeof status.sessionCost === "number");
-}
-
-/** 花费的纯文本（用于宽度预算），没有则不占宽。 */
-function costPlain(status: BottomInputFrameStatus): string {
-	return typeof status.sessionCost === "number" && Number.isFinite(status.sessionCost)
-		? formatUsd(status.sessionCost)
-		: "";
+	return Boolean(status.balance || status.model);
 }
 
 /** 堆叠布局那一行：模型名左对齐、余额右对齐，中间填空格（余额优先保留）。 */
-function buildNarrowStatusTopLine(width: number, status: BottomInputFrameStatus, theme: ThemeLike): string {
-	// 右侧：会话花费 + 余额（都属“钱”类，一起上提到堆叠行）
-	const right = joinStyledSegments(
-		[buildSessionCostSegment(status, theme), status.balance ?? null],
-		safeFg(theme, "borderMuted", " "),
-	);
-	const rightWidth = visibleWidth(right);
+function buildNarrowStatusTopLine(width: number, status: BottomInputFrameStatus): string {
+	const balance = status.balance ?? "";
+	const balanceWidth = visibleWidth(balance);
 	const model = status.model ?? "";
-	const modelBudget = Math.max(0, width - rightWidth - (rightWidth > 0 ? 2 : 0));
+	const modelBudget = Math.max(0, width - balanceWidth - (balanceWidth > 0 ? 2 : 0));
 	const clippedModel = model && modelBudget > 0 ? truncateToWidth(model, modelBudget, "…", false) : "";
-	const gap = Math.max(0, width - visibleWidth(clippedModel) - rightWidth);
-	return truncateToWidth(`${clippedModel}${" ".repeat(gap)}${right}`, width, "");
+	const gap = Math.max(0, width - visibleWidth(clippedModel) - balanceWidth);
+	return truncateToWidth(`${clippedModel}${" ".repeat(gap)}${balance}`, width, "");
 }
 
-function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string, cacheHitSegment?: string | null, costSegment?: string | null): string {
+function buildTopBorder(width: number, theme: ThemeLike, status: BottomInputFrameStatus, borderColor?: (text: string) => string, cacheHitSegment?: string | null): string {
 	const leftLabel = joinStyledSegments([status.model, status.thinking], safeFg(theme, "borderMuted", " · "));
-	// LOCAL PATCH (pi-tui-suite)：顺序 = cache 命中率(+miss) / 上下文进度条 / 余额 / 会话花费
+	// LOCAL PATCH (pi-tui-suite)：顺序 = cache 命中率 / 上下文进度条 / 余额
 	const rightLabel = joinStyledSegments(
-		[cacheHitSegment ?? null, status.context, status.balance ?? null, costSegment ?? null],
+		[cacheHitSegment ?? null, status.context, status.balance ?? null],
 		safeFg(theme, "borderMuted", " "),
 	);
 	return buildBorderLine({

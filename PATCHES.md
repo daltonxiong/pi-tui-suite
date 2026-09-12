@@ -118,40 +118,6 @@ deepseek/deepseek-flash                   ¥16.68
 
 ---
 
-## 7. 会话花费 + cache miss 次数（上边框）
-
-**文件**：`vendor/alps-pi@0.3.3/src/features/bottom-input/{status,frame}.ts`
-**标记**：搜 `readSessionCostSnapshot` / `formatUsd` / `buildSessionCostSegment`
-
-需求：在输入框区域看到「本轮会话 cache miss 次数」与「本轮会话一共花了多少钱」。
-
-**数据源**：pi 已经把两个量都写进 session 了，不用自己算价目表：
-
-- 每条 assistant 消息的 `usage.cost.total` = 那次请求的真实花费（USD，已按当时模型定价算好，切模型也不会算错）
-  ⇒ 会话总花费 = 对所有 assistant 条目求和。
-- cache miss：**镜像 pi 自己的 `detectMiss()` 规则**（见 `chunk-JVUZSMYM.js`）：拿上一次请求的 prompt 量
-  与本次 `cacheRead` 比，**少命中 > 1024 token** 才算“显著 miss”（小波动不报），compaction/branch_summary
-  会重置比较基准，与上游完全一致。同时汇总 `missedCost`（白花的钱）。
-- 只在 `renderFrameStatus()` 里跑一遍（上游本来就有布局缓存 + TTL），不逐帧扫。
-
-**渲染**：
-
-- 上边框右侧变成：`cache 命中率` + `✗<miss 次数>`（>0 才显示，警示色）+ 进度条 + 余额 + **会话花费**
-- 窄屏堆叠行：`模型名（左） … $花费 ¥余额（右）`；堆叠时边框不再重复花费（否则被截成 `$0.00…`）
-
-**实测效果**（`node tools/audit-bottom-layout.mjs 48`）：
-
-```
-deepseek/deepseek-flash           $0.0022 ¥16.68
-╭ med ────── ↻ 92.3% ✗1 ▤━━━╸────── 32.8%/128k ╮
-```
-
-**口径提醒**：花费是 pi 按内置价目表估算的 **USD**；与 provider 账单（本例是 CNY 账户）会有偏差 ——
-2026-09-12 实测：本会话估算 `$0.5944`，而 DeepSeek 余额同期从 ¥17.45 降到 ¥14.90（¥2.55），
-说明 pi 的 deepseek 价目表或币种换算与真实扣费并不一致，当作相对参考值用。
-
----
-
 ## 上游同步流程
 
 ```bash
