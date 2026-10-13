@@ -21,6 +21,14 @@ export type BeautifiedEditorFrameInput = {
 
 export const MIN_FRAME_WIDTH = 8;
 const FIXED_EDITOR_CURSOR_MARKER = CURSOR_MARKER;
+// LOCAL PATCH (pi-tui-suite)：pi 1.2 起光标由两类零宽 APC 标记承载 ——
+//   CURSOR_MARKER `\x1b_pi:c\x07`（TUI 定位硬件光标用）
+//   FAKE_CURSOR_START/END `\x1b_pi:fc\x07` / `\x1b_pi:/fc\x07`（TUI 画反色块用，见 renderFakeCursor）
+// sanitizeTerminalText 会把所有 APC 当危险控制序列剥掉，所以必须在净化前整类占位保护。
+const PI_INTERNAL_MARKER_PATTERN = /\x1b_pi:[\s\S]*?\x07/g;
+const MARKER_PLACEHOLDER_PREFIX = "\uE000PI_MARKER:";
+const MARKER_PLACEHOLDER_SUFFIX = "\uE001";
+const MARKER_PLACEHOLDER_PATTERN = /\uE000PI_MARKER:(\d+)\uE001/g;
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const BOTTOM_METRIC_COLORS = {
 	input: "#7AA2F7",
@@ -217,9 +225,15 @@ function renderContentLine(line: string, width: number, theme: ThemeLike, border
 }
 
 function sanitizeEditorLine(line: string): string {
-	const placeholder = "\uE000ALPS_CURSOR\uE000";
-	const withPlaceholder = String(line).split(FIXED_EDITOR_CURSOR_MARKER).join(placeholder);
-	return sanitizeTerminalText(withPlaceholder, { allowNewline: false, allowTab: true, preserveSgr: true }).split(placeholder).join(FIXED_EDITOR_CURSOR_MARKER);
+	// 只保护 CURSOR_MARKER 会让 FAKE_CURSOR_START/END 被 sanitizer 吃掉：TUI 既画不出反色块，
+	// 又因默认 showHardwareCursor=false 隐藏硬件光标 ⇒ 输入框看不到光标。所以整类保护。
+	const protectedMarkers: string[] = [];
+	const withPlaceholders = String(line).replace(PI_INTERNAL_MARKER_PATTERN, (marker) => {
+		const index = protectedMarkers.push(marker) - 1;
+		return `${MARKER_PLACEHOLDER_PREFIX}${index}${MARKER_PLACEHOLDER_SUFFIX}`;
+	});
+	const sanitized = sanitizeTerminalText(withPlaceholders, { allowNewline: false, allowTab: true, preserveSgr: true });
+	return sanitized.replace(MARKER_PLACEHOLDER_PATTERN, (_placeholder, index) => protectedMarkers[Number(index)] ?? "");
 }
 
 function truncateEditorLinePreservingCursor(line: string, width: number): string {
@@ -268,15 +282,20 @@ function sliceVisibleColumns(line: string, startCol: number, length: number): st
 	for (let index = 0; index < line.length;) {
 		const ansi = extractAnsiSequence(line, index);
 		if (ansi) {
-			if (currentCol >= startCol && currentCol < endCol) {
+			if (currentCol >= endCol) {
+				// 越过可视范围后，零宽控制序列（如光标反色的 FAKE_CURSOR_END）仍要保留，
+				// 否则未闭合的反色会泄漏到 padding 与右边框。
 				result += ansi.code;
-			} else if (currentCol < startCol) {
+			} else if (currentCol >= startCol) {
+				result += ansi.code;
+			} else {
 				pendingAnsi += ansi.code;
 			}
 			index += ansi.length;
 			continue;
 		}
 
+		if (currentCol >= endCol) break;
 		let textEnd = index;
 		while (textEnd < line.length && !extractAnsiSequence(line, textEnd)) textEnd += 1;
 		for (const { segment } of segmenter.segment(line.slice(index, textEnd))) {
@@ -294,7 +313,6 @@ function sliceVisibleColumns(line: string, startCol: number, length: number): st
 			if (currentCol >= endCol) break;
 		}
 		index = textEnd;
-		if (currentCol >= endCol) break;
 	}
 	return result;
 }

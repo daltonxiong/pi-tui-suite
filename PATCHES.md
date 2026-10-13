@@ -196,6 +196,32 @@ V8 采样剖分实测（跑工具窗口，10 s / 14166 个采样）：
 本 tick 的 `component.invalidate()` 在 `setWorkingMessage` 之前已完成，
 所以那一帧照样会把动画组件一起画掉。预期帧率 8–10/s → 4–5/s（渲染开销直接减半）。
 
+## 12. 修复输入框光标丢失（pi 1.2 的 fake cursor APC 标记被净化剥离）
+
+**文件**：`vendor/alps-pi@0.3.3/src/features/bottom-input/frame.ts`
+**标记**：搜 `PI_INTERNAL_MARKER_PATTERN` / `FAKE_CURSOR_END`
+
+**上游问题**：pi-tui 1.2.0 起光标由两类**零宽 APC 标记**承载（`pi-tui/dist/tui.js`）：
+
+- `CURSOR_MARKER = \x1b_pi:c\x07`：TUI 用 `extractCursorPosition()` 找到它，据此定位硬件光标；
+- `FAKE_CURSOR_START/END = \x1b_pi:fc\x07` / `\x1b_pi:/fc\x07`：`renderFakeCursor()` 用它包住光标字符，
+  `resolveFakeCursors()` 在 `showHardwareCursor=false`（pi 默认）时替换成反色 `\x1b[7m … \x1b[27m`。
+
+alps 的 `sanitizeEditorLine()` 会把 editor 行过一遍 `sanitizeTerminalText()`，而后者把**所有 APC**
+（`ESC _` … BEL）当危险控制序列剥掉。上游只给 `CURSOR_MARKER` 做了占位保护，`FAKE_CURSOR_START/END`
+漏网 ⇒ 标记被吃掉。结果 TUI 既画不出反色块，又因默认隐藏硬件光标 ⇒ **输入框完全看不到光标**。
+
+**改动**：
+
+- `sanitizeEditorLine()`：净化前把整类 `\x1b_pi:…\x07` 用私用区占位符替换，净化后再原样还原
+  （`PI_INTERNAL_MARKER_PATTERN` / `MARKER_PLACEHOLDER_*`）。
+- `sliceVisibleColumns()`：越过可视列后仍保留零宽控制序列。原来一超出 `endCol` 就 `break`，会把行尾的
+  `FAKE_CURSOR_END` 丢掉（超宽行触发截断时），导致 `\x1b[7m` 反色泄漏到 padding 与右边框。
+
+**验证**：`node tools/smoke-test.mjs` 与 `node tools/preview-frame.mjs 48` 不受影响；另可用一段临时脚本
+构造 `> hi` + `CURSOR_MARKER` + `FAKE_CURSOR_START/END` 喂 `renderBeautifiedEditorFrame()`，断言三个标记
+全部存活、行宽不变，且按 `resolveFakeCursors()` 等价替换后出现成对的 `\x1b[7m` / `\x1b[27m`。
+
 ---
 
 ## 附：本轮性能排查的结论（2026-09-12）
