@@ -98,6 +98,7 @@ deepseek/deepseek-flash                   ¥42.50      ← 模型名 · 账户�
 | 窄屏适配 | 手机端（Termux、48 列）自动把「模型名 + 余额」上提到输入框上方单独一行；宽屏保持单行边框 |
 | 性能 | 动画帧率默认 4（档位可选 2/4/6/8/12/16/24/30）；线框渲染带结果缓存，长会话与流式输出不再占满 CPU |
 | 深色主题自适应 | 线框、状态、按钮颜色全部取自 pi 主题 token |
+| **内置 Dracula 主题** | 随包提供两个变体（均符合 pi 1.2 strict schema，56 个 color token 齐备、不依赖终端默认色）：`dracula`（忠实还原）与 `dracula-phone`（手机竖屏可读性调优）；`/settings` → Theme 里选 |
 
 ## 安装
 
@@ -257,6 +258,8 @@ node tools/render-readme-screen.mjs         # 生成 README 里那张手机端�
 | [pi-rounded-tools](https://github.com/orionpax1997/pi-rounded-tools) | [orionpax1997](https://github.com/orionpax1997) | 圆角工具框（可选，默认关闭） |
 
 另外感谢 [pi](https://github.com/earendil-works/pi) 提供的扩展 API、主题 token 与 `@earendil-works/pi-tui` 组件。
+
+内置主题 `themes/dracula.json` 与 `themes/dracula-phone.json` 使用 [Dracula Theme](https://draculatheme.com) 官方调色板（MIT），映射为本套件的主题 token，见 `THIRD-PARTY-NOTICES.md`。
 
 ## 许可
 

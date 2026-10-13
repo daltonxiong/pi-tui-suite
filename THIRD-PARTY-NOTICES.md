@@ -52,6 +52,23 @@
 
 ---
 
+## Dracula Theme（调色板）
+
+- 文件：`themes/dracula.json`（本套件自行映射，非拷贝第三方 JSON）
+- 来源：https://github.com/dracula/dracula-theme
+- 作者：Dracula Theme contributors
+- 许可：MIT
+- 版权声明：
+
+  ```
+  MIT License
+  Copyright (c) 2023 Dracula Theme
+  ```
+
+- 本套件采用的素材：Dracula 官方调色板（Background `#282a36`、Current Line `#44475a`、Foreground `#f8f8f2`、Comment `#6272a4`、Cyan `#8be9fd`、Green `#50fa7b`、Orange `#ffb86c`、Pink `#ff79c6`、Purple `#bd93f9`、Red `#ff5555`、Yellow `#f1fa8c`），映射到 pi 的 56 个主题 color token。
+
+---
+
 ## MIT License（适用于上述第三方代码）
 
 ```

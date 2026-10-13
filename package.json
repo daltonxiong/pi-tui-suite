@@ -18,12 +18,14 @@
       "./extensions"
     ],
     "themes": [
+      "./themes",
       "./vendor/alps-pi@0.3.3/themes"
     ]
   },
   "files": [
     "extensions",
     "src",
+    "themes",
     "vendor",
     "tools",
     "README.md",
