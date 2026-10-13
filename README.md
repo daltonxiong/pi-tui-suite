@@ -95,6 +95,7 @@ deepseek/deepseek-flash                   ¥42.50      ← 模型名 · 账户�
 | **cache 命中率** | 最近一次请求的 prompt cache 命中比例，放在输入框上边框，窄屏也不会被裁 |
 | **上下文占用** | 进度条 + 已用百分比 / 模型上下文窗口，占用越高颜色越警示 |
 | **复制净化** | 选中/复制时自动剥掉线框装饰（`│`、`╭─╮`、`╰─╯`、行尾填充），代码可以直接粘；正文缩进与 ASCII `\|` 不受影响 |
+| **右击粘贴去重** | Windows 上 VS Code / Orca 等终端会把右键同时转给应用和原生粘贴，导致粘两次；命中名单的终端让位给原生粘贴（`rightClickPaste`） |
 | 窄屏适配 | 手机端（Termux、48 列）自动把「模型名 + 余额」上提到输入框上方单独一行；宽屏保持单行边框 |
 | 性能 | 动画帧率默认 4（档位可选 2/4/6/8/12/16/24/30）；线框渲染带结果缓存，长会话与流式输出不再占满 CPU |
 | 深色主题自适应 | 线框、状态、按钮颜色全部取自 pi 主题 token |
@@ -144,6 +145,8 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
   "alpsPi": { "enabled": true, "animationsFps": 4 },
   "header": { "enabled": true },
   "roundedFrames": { "enabled": false },
+  "copyClean": { "enabled": true },
+  "rightClickPaste": { "enabled": true, "skipTerminals": ["vscode", "orca"] },
   "balance": {
     "enabled": true,
     "label": "",
@@ -168,6 +171,8 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | `balance.maxBackoffSeconds` | `120` | 连续失败时的退避上限 |
 | `balance.providers` | `{}` | 额外 provider 的余额接口，见下 |
 | `copyClean.enabled` | `true` | 复制净化开关；想要"连框线一起复制"就设 `false` |
+| `rightClickPaste.enabled` | `true` | Windows 右击粘贴去重总开关（非 Windows 自动不生效） |
+| `rightClickPaste.skipTerminals` | `["vscode", "orca"]` | 让位给终端原生粘贴的 `TERM_PROGRAM` 名单（大小写不敏感）。这些终端既转发右键事件又会自己粘贴，pi 再合成粘贴就会粘两次。新增其它同类终端时把名字加进来；填 `[]` = 全部保留 pi 的合成粘贴 |
 | `probe` / `profile` | 关闭 | **仅供排查性能**：渲染帧率/帧耗时探针、V8 采样剖分，默认关闭且零开销，见「开发辅助」 |
 
 ## 复制

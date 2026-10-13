@@ -72,4 +72,45 @@ for (const [id, kind] of cases) {
 }
 console.log("✓ 余额适配器匹配（大小写/分隔符归一化）通过");
 
+// 回归：Windows 右击粘贴去重 —— Orca/VS Code 终端自带粘贴，pi 的合成粘贴必须让位；
+// 其它终端（Windows Terminal 等）必须保持原行为，否则会彻底失去右击粘贴。
+const rcPasteUrl = new URL("../src/right-click-paste/index.ts", import.meta.url).pathname;
+const rcPaste = await jiti.import(rcPasteUrl);
+const skipCases = [
+	["Orca", ["vscode", "orca"], true],
+	["ORCA", ["vscode", "orca"], true],
+	["vscode", ["vscode", "orca"], true],
+	["Windows_Terminal", ["vscode", "orca"], false],
+	[undefined, ["vscode", "orca"], false],
+	["orca", [], false],
+];
+for (const [term, list, expected] of skipCases) {
+	const actual = rcPaste.shouldSkipSyntheticRightClickPaste(term, list);
+	if (actual !== expected) {
+		console.error(`✗ shouldSkipSyntheticRightClickPaste(${term}, ${JSON.stringify(list)}) => ${actual}，期望 ${expected}`);
+		process.exit(1);
+	}
+}
+if (process.platform === "win32") {
+	const { TuiAltScreen } = await import("@earendil-works/pi-tui");
+	rcPaste.installRightClickPasteGuard(true, ["vscode", "orca"], () => {});
+	const previousTerm = process.env.TERM_PROGRAM;
+	let fired = 0;
+	const fakeThis = { onRightClickPaste: () => { fired++; } };
+	try {
+		process.env.TERM_PROGRAM = "Orca";
+		const consumedUnderOrca = TuiAltScreen.prototype.handleRightClickPaste.call(fakeThis, { release: false, button: 2 });
+		process.env.TERM_PROGRAM = "Windows_Terminal";
+		const consumedUnderWt = TuiAltScreen.prototype.handleRightClickPaste.call(fakeThis, { release: false, button: 2 });
+		if (consumedUnderOrca !== false || fired !== 1 || consumedUnderWt !== true) {
+			console.error(`✗ 右击粘贴去重补丁行为异常：orca consumed=${consumedUnderOrca} fired=${fired} wt consumed=${consumedUnderWt}`);
+			process.exit(1);
+		}
+	} finally {
+		if (previousTerm === undefined) delete process.env.TERM_PROGRAM;
+		else process.env.TERM_PROGRAM = previousTerm;
+	}
+}
+console.log("✓ 右击粘贴去重（Orca 让位 / 其它终端保留）通过");
+
 console.log("\n冒烟全部通过。");

@@ -36,6 +36,11 @@ export type SuiteConfig = {
 	header: { enabled: boolean };
 	/** 复制净化：选中/复制时剥掉线框装饰（│、╭─╮ 等），默认开 */
 	copyClean: { enabled: boolean };
+	/**
+	 * Windows 右击粘贴去重：在这些终端（TERM_PROGRAM，大小写不敏感）里跳过 pi 的合成粘贴，
+	 * 交给终端自己的粘贴路径。默认 vscode/orca —— 这两个终端既转发右键事件又会自己粘贴。
+	 */
+	rightClickPaste: { enabled: boolean; skipTerminals: string[] };
 	/** 渲染探针（性能诊断，默认关闭；开启时每秒往日志写一行帧率/帧耗时） */
 	probe: { enabled: boolean; summarySeconds: number; stackEverySeconds: number };
 	/** V8 采样剖分（性能诊断，默认关闭） */
@@ -63,6 +68,7 @@ export const DEFAULT_CONFIG: SuiteConfig = {
 	roundedFrames: { enabled: false },
 	header: { enabled: true },
 	copyClean: { enabled: true },
+	rightClickPaste: { enabled: true, skipTerminals: ["vscode", "orca"] },
 	probe: { enabled: false, summarySeconds: 1, stackEverySeconds: 20 },
 	profile: { enabled: false, windowSeconds: 10, topN: 18, samplingIntervalUs: 500 },
 	balance: {
@@ -88,6 +94,12 @@ function num(value: unknown, fallback: number, min: number): number {
 	return typeof value === "number" && Number.isFinite(value) && value >= min ? value : fallback;
 }
 
+/** 字符串数组：过滤非字符串/空串；字段缺失就用默认值（允许显式空数组 = 一个都不跳过）。 */
+function stringList(value: unknown, fallback: string[]): string[] {
+	if (!Array.isArray(value)) return [...fallback];
+	return value.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
+}
+
 export function configPath(): string {
 	return process.env.PI_TUI_SUITE_CONFIG || join(homedir(), ".pi", "agent", "pi-tui-suite.json");
 }
@@ -106,6 +118,7 @@ export function loadSuiteConfig(): SuiteConfig {
 	const roundedFrames = isRecord(raw.roundedFrames) ? raw.roundedFrames : {};
 	const header = isRecord(raw.header) ? raw.header : {};
 	const copyClean = isRecord(raw.copyClean) ? raw.copyClean : {};
+	const rightClickPaste = isRecord(raw.rightClickPaste) ? raw.rightClickPaste : {};
 	const probe = isRecord(raw.probe) ? raw.probe : {};
 	const profile = isRecord(raw.profile) ? raw.profile : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
@@ -146,6 +159,10 @@ export function loadSuiteConfig(): SuiteConfig {
 		},
 		copyClean: {
 			enabled: typeof copyClean.enabled === "boolean" ? copyClean.enabled : defaults.copyClean.enabled,
+		},
+		rightClickPaste: {
+			enabled: typeof rightClickPaste.enabled === "boolean" ? rightClickPaste.enabled : defaults.rightClickPaste.enabled,
+			skipTerminals: stringList(rightClickPaste.skipTerminals, defaults.rightClickPaste.skipTerminals),
 		},
 		probe: {
 			enabled: typeof probe.enabled === "boolean" ? probe.enabled : defaults.probe.enabled,

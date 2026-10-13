@@ -27,6 +27,7 @@ import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
 import { installCopyClean } from "../src/copy-clean/index.ts";
 import { installHeader } from "../src/header/index.ts";
+import { installRightClickPasteGuard } from "../src/right-click-paste/index.ts";
 import { startAutoProfiler } from "../src/perf/profile.ts";
 import { installRenderProbe } from "../src/perf/probe.ts";
 import { createLogger } from "../src/log.ts";
@@ -37,7 +38,8 @@ export default function (pi: ExtensionAPI): void {
 
 	log(
 		`loaded (alpsPi=${config.alpsPi.enabled ? "on" : "off"} header=${config.header.enabled ? "on" : "off"} ` +
-			`roundedFrames=${config.roundedFrames.enabled ? "on" : "off"} balance=${config.balance.enabled ? "on" : "off"})`,
+			`roundedFrames=${config.roundedFrames.enabled ? "on" : "off"} balance=${config.balance.enabled ? "on" : "off"} ` +
+			`rightClickPaste=${config.rightClickPaste.enabled ? config.rightClickPaste.skipTerminals.join("/") : "off"})`,
 	);
 
 	// 0) 渲染探针（默认关闭；排查卡顿/掉帧时打开，见 README「开发辅助」）
@@ -65,6 +67,16 @@ export default function (pi: ExtensionAPI): void {
 	const uninstallCopyClean = installCopyClean(config.copyClean.enabled, log);
 	if (config.copyClean.enabled) {
 		pi.on("session_shutdown", () => uninstallCopyClean());
+	}
+
+	// 2.5) Windows 右击粘贴去重：Orca / VS Code 这类终端自己会粘贴，跳过 pi 的合成粘贴
+	const uninstallRightClickPaste = installRightClickPasteGuard(
+		config.rightClickPaste.enabled,
+		config.rightClickPaste.skipTerminals,
+		log,
+	);
+	if (config.rightClickPaste.enabled) {
+		pi.on("session_shutdown", () => uninstallRightClickPaste());
 	}
 
 	// 3) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）
