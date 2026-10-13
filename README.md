@@ -194,6 +194,9 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | `openrouter`（含自建 provider id 包含 `openrouter` 的） | `GET /credits` | 额度减已用；也可用 `kind: "openrouter-key"` 读 `GET /key` 的剩余额度 |
 | 其他 | 无 | 例如 NVIDIA NIM、OpenCode Zen 等只提供免费额度、没有余额接口，角标会自动隐藏 |
 
+匹配忽略大小写与分隔符（`-` `_` `.` 空格），所以 cc-switch 那种 `cc-switch-deep-seek`
+也能命中内置的 `deepseek`（否则会被当成无余额接口的 provider，角标不显示）。
+
 自建 provider 的余额接口：
 
 ```json

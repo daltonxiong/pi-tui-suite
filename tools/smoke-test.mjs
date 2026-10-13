@@ -49,4 +49,27 @@ const pi = {
 entry(pi);
 console.log(`✓ 装配干跑通过：注册事件 ${[...handlers.keys()].sort().join(", ")}`);
 console.log(`✓ 注册命令 ${commands.length ? commands.join(", ") : "(无)"}`);
+
+// 回归：provider id 归一化匹配 —— Windows 上 cc-switch 的 "cc-switch-deep-seek"
+// 去分隔符后必须命中内置 deepseek，否则余额角标不显示。
+const adaptersUrl = new URL("../src/balance/adapters.ts", import.meta.url).pathname;
+const adapters = await jiti.import(adaptersUrl);
+const overrides = {
+	"cc-switch-open-router": { url: "https://openrouter.ai/api/v1/credits", kind: "openrouter-credits", symbol: "$" },
+};
+const cases = [
+	["cc-switch-deep-seek", "deepseek"],
+	["cc_switch_deep.seek", "deepseek"],
+	["deepseek", "deepseek"],
+	["cc-switch-open-router", "openrouter-credits"],
+];
+for (const [id, kind] of cases) {
+	const adapter = adapters.resolveAdapter(id, overrides);
+	if (!adapter || adapter.kind !== kind) {
+		console.error(`✗ resolveAdapter(${id}) => ${adapter ? adapter.kind : "undefined"}，期望 ${kind}`);
+		process.exit(1);
+	}
+}
+console.log("✓ 余额适配器匹配（大小写/分隔符归一化）通过");
+
 console.log("\n冒烟全部通过。");

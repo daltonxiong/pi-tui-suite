@@ -52,14 +52,25 @@ const BUILTIN: BalanceAdapter[] = [
 
 const SYMBOLS: Record<string, string> = { CNY: "¥", USD: "$", EUR: "€", GBP: "£", JPY: "¥" };
 
+/**
+ * 归一化 provider id / 匹配串：小写后去掉分隔符（空格 `-` `_` `.`）。
+ * 这样自建 provider 里的写法差异也能命中 —— 例如 `cc-switch-deep-seek`
+ * 归一化成 `ccswitchdeepseek`，包含内置的 `deepseek`（Windows 上 cc-switch 就是这么命名的）。
+ */
+function normalizeId(value: string): string {
+	return String(value || "")
+		.toLowerCase()
+		.replace(/[\s._-]+/g, "");
+}
+
 /** 按 provider id 找适配器：先看用户覆盖（子串匹配），再看内置表。 */
 export function resolveAdapter(
 	providerId: string,
 	overrides: Record<string, BalanceProviderOverride> = {},
 ): BalanceAdapter | undefined {
-	const id = String(providerId || "").toLowerCase();
+	const id = normalizeId(providerId);
 	for (const [key, value] of Object.entries(overrides)) {
-		if (!value?.url || !id.includes(key.toLowerCase())) continue;
+		if (!value?.url || !id.includes(normalizeId(key))) continue;
 		return {
 			match: key,
 			kind: value.kind ?? "deepseek",
@@ -68,7 +79,7 @@ export function resolveAdapter(
 			symbol: value.symbol,
 		};
 	}
-	return BUILTIN.find((adapter) => id.includes(adapter.match));
+	return BUILTIN.find((adapter) => id.includes(normalizeId(adapter.match)));
 }
 
 /** 把端点模板里的 {baseUrl} 展开；baseUrl 缺省时用适配器自带的兵库。 */
