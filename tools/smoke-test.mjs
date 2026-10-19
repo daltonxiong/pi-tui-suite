@@ -113,4 +113,47 @@ if (process.platform === "win32") {
 }
 console.log("✓ 右击粘贴去重（Orca 让位 / 其它终端保留）通过");
 
+// 回归：ConPTY 鼠标上报重放 —— Windows/WSL 下 fullscreen 的滚轮与选区复制都依赖它。
+// 把平台判定与序列选择写成纯函数，避开真实终端；再断言补丁确实挂在渲染器原型上。
+const mouseReportUrl = new URL("../src/mouse-report/index.ts", import.meta.url).pathname;
+const mouseReport = await jiti.import(mouseReportUrl);
+const platformCases = [
+	["win32", {}, true],
+	["linux", { WSL_DISTRO_NAME: "Ubuntu-24.04" }, true],
+	["linux", {}, false],
+	["darwin", {}, false],
+	["win32", { PI_TUI_SUITE_MOUSE_REPLAY: "0" }, false],
+];
+for (const [platform, env, expected] of platformCases) {
+	const actual = mouseReport.needsMouseReportReplay(platform, env);
+	if (actual !== expected) {
+		console.error(`✗ needsMouseReportReplay(${platform}, ${JSON.stringify(env)}) => ${actual}，期望 ${expected}`);
+		process.exit(1);
+	}
+}
+const allMotion = mouseReport.mouseReportSequence({});
+const buttonMotion = mouseReport.mouseReportSequence({ TMUX: "/tmp/tmux-1000/default" });
+if (!allMotion.includes("\x1b[?1003h") || !buttonMotion.includes("\x1b[?1002h") || buttonMotion.includes("\x1b[?1003h")) {
+	console.error(`✗ 鼠标上报序列不对：all=${JSON.stringify(allMotion)} button=${JSON.stringify(buttonMotion)}`);
+	process.exit(1);
+}
+const written = [];
+const replayed = mouseReport.replayMouseReport(
+	{ mouseEnabled: true, terminal: { write: (data) => written.push(data) } },
+	{},
+);
+const skipped = mouseReport.replayMouseReport(
+	{ mouseEnabled: false, terminal: { write: (data) => written.push(data) } },
+	{},
+);
+if (!replayed || replayed !== written[0] || skipped !== undefined || written.length !== 1) {
+	console.error(`✗ replayMouseReport 行为异常：replayed=${replayed} skipped=${skipped} writes=${written.length}`);
+	process.exit(1);
+}
+if (mouseReport.needsMouseReportReplay() && !mouseReport.isMouseReportPatched()) {
+	console.error("✗ 当前平台需要鼠标重放，但 TuiAltScreen.prototype 上没有补丁");
+	process.exit(1);
+}
+console.log("✓ ConPTY 鼠标上报重放（平台判定 / 序列 / 补丁挂载）通过");
+
 console.log("\n冒烟全部通过。");

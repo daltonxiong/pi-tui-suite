@@ -27,6 +27,7 @@ import { installBalanceStatus } from "../src/balance/index.ts";
 import { loadSuiteConfig } from "../src/config.ts";
 import { installCopyClean } from "../src/copy-clean/index.ts";
 import { installHeader } from "../src/header/index.ts";
+import { installMouseReportReplay } from "../src/mouse-report/index.ts";
 import { installRightClickPasteGuard } from "../src/right-click-paste/index.ts";
 import { startAutoProfiler } from "../src/perf/profile.ts";
 import { installRenderProbe } from "../src/perf/probe.ts";
@@ -39,7 +40,8 @@ export default function (pi: ExtensionAPI): void {
 	log(
 		`loaded (alpsPi=${config.alpsPi.enabled ? "on" : "off"} header=${config.header.enabled ? "on" : "off"} ` +
 			`roundedFrames=${config.roundedFrames.enabled ? "on" : "off"} balance=${config.balance.enabled ? "on" : "off"} ` +
-			`rightClickPaste=${config.rightClickPaste.enabled ? config.rightClickPaste.skipTerminals.join("/") : "off"})`,
+			`rightClickPaste=${config.rightClickPaste.enabled ? config.rightClickPaste.skipTerminals.join("/") : "off"} ` +
+			`mouseReport=${config.mouseReport.enabled ? "on" : "off"})`,
 	);
 
 	// 0) 渲染探针（默认关闭；排查卡顿/掉帧时打开，见 README「开发辅助」）
@@ -77,6 +79,12 @@ export default function (pi: ExtensionAPI): void {
 	);
 	if (config.rightClickPaste.enabled) {
 		pi.on("session_shutdown", () => uninstallRightClickPaste());
+	}
+
+	// 2.6) ConPTY 鼠标上报：Windows / WSL 下 fullscreen 的滚轮与选区复制依赖终端真正启用 mouse reporting
+	const uninstallMouseReport = installMouseReportReplay(config.mouseReport.enabled, log);
+	if (config.mouseReport.enabled) {
+		pi.on("session_shutdown", () => uninstallMouseReport());
 	}
 
 	// 3) 余额角标（默认内嵌在输入框上边框的上下文进度条后面）

@@ -41,6 +41,8 @@ export type SuiteConfig = {
 	 * 交给终端自己的粘贴路径。默认 vscode/orca —— 这两个终端既转发右键事件又会自己粘贴。
 	 */
 	rightClickPaste: { enabled: boolean; skipTerminals: string[] };
+	/** ConPTY（Windows / WSL）下在 raw mode 之后重放鼠标上报序列：fullscreen 的滚轮与选区复制依赖它 */
+	mouseReport: { enabled: boolean };
 	/** 渲染探针（性能诊断，默认关闭；开启时每秒往日志写一行帧率/帧耗时） */
 	probe: { enabled: boolean; summarySeconds: number; stackEverySeconds: number };
 	/** V8 采样剖分（性能诊断，默认关闭） */
@@ -69,6 +71,7 @@ export const DEFAULT_CONFIG: SuiteConfig = {
 	header: { enabled: true },
 	copyClean: { enabled: true },
 	rightClickPaste: { enabled: true, skipTerminals: ["vscode", "orca"] },
+	mouseReport: { enabled: true },
 	probe: { enabled: false, summarySeconds: 1, stackEverySeconds: 20 },
 	profile: { enabled: false, windowSeconds: 10, topN: 18, samplingIntervalUs: 500 },
 	balance: {
@@ -119,6 +122,7 @@ export function loadSuiteConfig(): SuiteConfig {
 	const header = isRecord(raw.header) ? raw.header : {};
 	const copyClean = isRecord(raw.copyClean) ? raw.copyClean : {};
 	const rightClickPaste = isRecord(raw.rightClickPaste) ? raw.rightClickPaste : {};
+	const mouseReport = isRecord(raw.mouseReport) ? raw.mouseReport : {};
 	const probe = isRecord(raw.probe) ? raw.probe : {};
 	const profile = isRecord(raw.profile) ? raw.profile : {};
 	const providers: Record<string, BalanceProviderOverride> = {};
@@ -163,6 +167,9 @@ export function loadSuiteConfig(): SuiteConfig {
 		rightClickPaste: {
 			enabled: typeof rightClickPaste.enabled === "boolean" ? rightClickPaste.enabled : defaults.rightClickPaste.enabled,
 			skipTerminals: stringList(rightClickPaste.skipTerminals, defaults.rightClickPaste.skipTerminals),
+		},
+		mouseReport: {
+			enabled: typeof mouseReport.enabled === "boolean" ? mouseReport.enabled : defaults.mouseReport.enabled,
 		},
 		probe: {
 			enabled: typeof probe.enabled === "boolean" ? probe.enabled : defaults.probe.enabled,

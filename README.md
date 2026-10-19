@@ -14,7 +14,7 @@
 
 <!-- screen:start -->
 ```
-╭─── Pi v0.85.1 ───────────────────────────────╮
+╭─── Pi v1.3.0 ────────────────────────────────╮
 │                                              │
 │                                              │
 │                 █████████                    │
@@ -137,6 +137,12 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 
 ## 配置
 
+> 套件按 pi 的 **fullscreen** TUI 模式设计（README 示例、`copyClean` 的选区复制都是 fullscreen 路径）。
+> 仍用 `tuiMode: "regular"` 的话，运行中在终端里上滚阅读会被 pi 上游的差分渲染打断：
+> 视口跳到会话开头且 scrollback 被清 —— regular 模式的会话历史归终端管，pi 拿不到滚动位置，
+> 这是上游设计限制（issue #9675 / #10450，均 not_planned），扩展层无法修补。切 fullscreen 即可。
+> 详见 `ERR-global-linux-002`（`~/.pi/agent/troubleshooting/troubleshooting.md`）。
+
 `pi-tui-suite.json`（放在 pi 配置目录，默认 `~/.pi/agent/`；文件不存在即全部使用默认值）：
 
 ```json
@@ -147,6 +153,7 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
   "roundedFrames": { "enabled": false },
   "copyClean": { "enabled": true },
   "rightClickPaste": { "enabled": true, "skipTerminals": ["vscode", "orca"] },
+  "mouseReport": { "enabled": true },
   "balance": {
     "enabled": true,
     "label": "",
@@ -173,6 +180,7 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | `copyClean.enabled` | `true` | 复制净化开关；想要"连框线一起复制"就设 `false` |
 | `rightClickPaste.enabled` | `true` | Windows 右击粘贴去重总开关（非 Windows 自动不生效） |
 | `rightClickPaste.skipTerminals` | `["vscode", "orca"]` | 让位给终端原生粘贴的 `TERM_PROGRAM` 名单（大小写不敏感）。这些终端既转发右键事件又会自己粘贴，pi 再合成粘贴就会粘两次。新增其它同类终端时把名字加进来；填 `[]` = 全部保留 pi 的合成粘贴 |
+| `mouseReport.enabled` | `true` | ConPTY（Windows / WSL）下在 raw mode 之后重放鼠标上报序列。关掉后 fullscreen 的滚轮/选区可能落回终端原生行为（翻输入历史、复制带竖线） |
 | `probe` / `profile` | 关闭 | **仅供排查性能**：渲染帧率/帧耗时探针、V8 采样剖分，默认关闭且零开销，见「开发辅助」 |
 
 ## 复制
@@ -183,6 +191,11 @@ pi -e /path/to/pi-tui-suite/extensions/pi-tui-suite.ts
 | `Ctrl+C` | 复制当前选区（同上，已净化） |
 | `Ctrl+X` | 复制最后一条助手回复的**原始文本**（不经过线框，天然干净） |
 | `/copy` | 同上（内置命令） |
+
+> fullscreen 下鼠标由 pi 接管：左键拖选即选中（松手自动复制，走 `copyClean`）；右键是 pi 的粘贴。
+> 强行用终端原生选择（Shift+拖选 / 终端右键菜单）拿到的是屏幕字符，会带 `│`——应用层看不到选区，无法净化。
+> WSL / Windows 下若鼠标没被 pi 接管（滚轮在翻输入历史、复制带竖线），是 ConPTY 吞了鼠标上报，
+> 套件的 `mouseReport` 会在 raw mode 之后重放（默认开）。
 
 ## 命令
 
