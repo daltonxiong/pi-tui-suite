@@ -224,6 +224,44 @@ alps 的 `sanitizeEditorLine()` 会把 editor 行过一遍 `sanitizeTerminalText
 
 ---
 
+## 13. 上下文占用按「provider 记账口径」着色（越过输入预算就转红打 `!`）
+
+**文件**：`vendor/alps-pi@0.3.3/src/features/bottom-input/status.ts`
+**标记**：搜 `CONTEXT_SAFETY_TOKENS` / `contextThresholds`
+
+**上游行为**：进度条只在 `percent > 70` 转黄、`> 90` 转红，`percent` 是
+「上下文 tokens / 模型窗口」。这个口径与 pi 发请求时的实际限制**脱节**：
+
+- `pi-ai/dist/api/simple-options.js` 里 `clampMaxTokensToContext()`：
+  `max_tokens = min(model.maxTokens, 窗口 - estimateContextTokens(ctx) - 4096)`；
+- provider（OpenAI 兼容）把 prompt 与 completion 记在**同一个**窗口里。
+
+于是模型输出上限越大，可用输入越少：上下文一过 `窗口 - maxTokens - 4096`，pi 就把窗口剩余
+全部塞进 `max_tokens`，只留 4096 兜估算误差，而 `estimateContextTokens()` 用 chars/4，中文与工具
+结果会明显偏低 ⇒ 下一秒就是 400。实测（1M 窗口、`maxTokens=393216`）：最后一条成功 usage
+`707144`（显示 67.4%，看着“安全”），下一次请求 `724267 messages + 325593 completion = 1049860`
+超过 1048576，误差 5380 > 4096 余量，多出 1284 tokens。
+
+**改动**：
+
+- `readContextUsageSnapshot()` 从 `ctx.model.maxTokens` 读输出上限，写进 `ContextUsage.maxTokens`；
+- 新增 `contextThresholds(usage)`：`safeCeiling = 窗口 - maxTokens - 4096`，
+  `errorAt = min(90, safeCeiling/窗口*100)`、`warnAt = min(70, errorAt*0.9)`、
+  `saturated = tokens > safeCeiling`；无 `maxTokens`（或它不小于窗口）时退回原来的 70/90；
+- `renderContextSegment()` 按这组阈值着色，`saturated` 时在 `xx.x%/窗口` 后追加 `!`；
+  `contextColor(percent, thresholds)` 保持旧调用可用的默认参数。
+
+**验证**：`node tools/smoke-test.mjs` 新增「上下文危险区阈值」一节 —— 用上面那次真实喷掉的
+数字断言 `errorAt≈62.11`、`saturated=true`、渲染出 `67.4%/1.0M!` 且带 `#ff5f5f`；
+把 `maxTokens` 换成 65536 时回到 70/90、无 `!`。
+
+**注意**：这是显示修复，不改变 pi 的请求策略。临界点要靠配置拉回：`~/.pi/agent/models.json` 的
+`maxTokens` 决定爆点（本机已从 393216 降到 65536），`compaction.modelOverrides` 的 `reserveTokens`
+决定自动压缩点（本机 150000 ⇒ 85.7% 触发）。两个数值的推导与实测见
+`docs/99_troubleshooting.md` 的 ERR-002。
+
+---
+
 ## 附：本轮性能排查的结论（2026-09-12）
 
 **插件侧修掉的（都有实测数据）**

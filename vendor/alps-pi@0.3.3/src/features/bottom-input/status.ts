@@ -13,6 +13,8 @@ export type ContextUsage = {
 	tokens: number;
 	contextWindow?: number;
 	percent?: number;
+	/** 模型单次输出上限（pi 的 Model.maxTokens）；用来算 provider 的输入预算 */
+	maxTokens?: number;
 };
 
 type SessionUsageSnapshot = {
@@ -82,6 +84,13 @@ export type BottomInputStatusRender = {
 };
 
 export const CONTEXT_BAR_WIDTH = 10;
+// ── LOCAL PATCH (pi-tui-suite)：上下文危险区 ────────────────────────────────
+// pi 每轮发请求前按 max_tokens = min(model.maxTokens, 窗口 - 上下文估算 - 4096) 裁剪，
+// provider 把 prompt 与 completion 记在**同一个**窗口里。模型输出上限越大，可用输入就越少：
+// 上下文一旦超过「窗口 - maxTokens - 4096」，pi 会把窗口剩余全部塞进 max_tokens，只留
+// CONTEXT_SAFETY_TOKENS 兜估算误差（pi 的 estimateContextTokens 用 chars/4，中文与工具结果
+// 会明显偏低）。越过这条线之后随时可能 400，所以着色必须以它为界，不能只看 70%/90%。
+const CONTEXT_SAFETY_TOKENS = 4096;
 const CONTEXT_COLORS = {
 	normal: "#00afaf",
 	warning: "#febc38",
@@ -287,12 +296,14 @@ export function readContextUsageSnapshot(
 	const tokens = coreUsage?.tokens ?? (assistantUsage ? getUsageTokenTotal(assistantUsage) : 0);
 	const contextWindow = coreUsage?.contextWindow ?? readModelContextWindow(ctx);
 	const percent = coreUsage?.percent ?? (contextWindow > 0 ? (tokens / contextWindow) * 100 : undefined);
+	const maxTokens = readModelMaxTokens(ctx);
 
 	if (!Number.isFinite(tokens) || tokens <= 0) return null;
 	return {
 		tokens,
 		contextWindow: contextWindow > 0 ? contextWindow : undefined,
 		percent: typeof percent === "number" && Number.isFinite(percent) ? percent : undefined,
+		maxTokens: maxTokens > 0 ? maxTokens : undefined,
 	};
 }
 
@@ -329,13 +340,47 @@ function renderContextSegment(usage: ContextUsage | null, icons: BottomInputIcon
 		const percent = typeof usage.percent === "number" && Number.isFinite(usage.percent)
 			? usage.percent
 			: (usage.tokens / usage.contextWindow) * 100;
-		const color = contextColor(percent);
+		// LOCAL PATCH (pi-tui-suite)：按「provider 记账口径」的危险区着色，越过临界点加 `!`
+		const thresholds = contextThresholds(usage);
+		const color = contextColor(percent, thresholds);
 		const icon = applyHexColor(color, icons.context);
-		const value = applyHexColor(color, `${percent.toFixed(1)}%/${formatTokens(usage.contextWindow)}`);
+		const value = applyHexColor(
+			color,
+			`${percent.toFixed(1)}%/${formatTokens(usage.contextWindow)}${thresholds.saturated ? "!" : ""}`,
+		);
 		return `${icon}${renderContextBar(percent, color)} ${value}`;
 	}
 
 	return applyHexColor(CONTEXT_COLORS.normal, `${icons.context}${formatTokens(usage.tokens)}`);
+}
+
+/** 上下文占用率的安全区间（百分比口径，与渲染用的 percent 一致）。 */
+export type ContextThresholds = {
+	/** 进入警示色的占用率 */
+	warnAt: number;
+	/** 进入错误色的占用率 */
+	errorAt: number;
+	/** 已越过安全输入上限：本轮请求会贴满窗口，provider 随时可能拒绝 */
+	saturated: boolean;
+};
+
+/**
+ * 算出危险区边界：窗口减去模型输出上限与 pi 的安全余量。
+ * 没有输出上限（或 maxTokens 不小于窗口）时退回 pi 自带的 70% / 90% 固定档。
+ */
+export function contextThresholds(usage: ContextUsage): ContextThresholds {
+	const contextWindow = usage.contextWindow ?? 0;
+	const maxTokens = usage.maxTokens ?? 0;
+	if (!(contextWindow > 0) || !(maxTokens > 0) || maxTokens >= contextWindow) {
+		return { warnAt: 70, errorAt: 90, saturated: false };
+	}
+	const safeCeiling = Math.max(0, contextWindow - maxTokens - CONTEXT_SAFETY_TOKENS);
+	const errorAt = Math.min(90, (safeCeiling / contextWindow) * 100);
+	return {
+		warnAt: Math.min(70, errorAt * 0.9),
+		errorAt,
+		saturated: usage.tokens > safeCeiling,
+	};
 }
 
 function renderElapsedSegment(theme: ThemeLike, startedAt: number, now: number, icons: BottomInputIconSet): string | null {
@@ -468,6 +513,15 @@ function readBranchEntries(ctx: any): any[] {
 	}
 }
 
+function readModelMaxTokens(ctx: any): number {
+	try {
+		const maxTokens = ctx?.model?.maxTokens;
+		return typeof maxTokens === "number" && Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 0;
+	} catch {
+		return 0;
+	}
+}
+
 function readModelContextWindow(ctx: any): number {
 	try {
 		const contextWindow = ctx?.model?.contextWindow;
@@ -501,9 +555,9 @@ export function renderContextBar(percent: number, color = CONTEXT_COLORS.normal)
 	return `${applyHexColor(color, `${filled}${partial}`)}${applyHexColor(CONTEXT_COLORS.empty, empty)}`;
 }
 
-function contextColor(percent: number): string {
-	if (percent > 90) return CONTEXT_COLORS.error;
-	if (percent > 70) return CONTEXT_COLORS.warning;
+function contextColor(percent: number, thresholds: ContextThresholds = { warnAt: 70, errorAt: 90, saturated: false }): string {
+	if (thresholds.saturated || percent > thresholds.errorAt) return CONTEXT_COLORS.error;
+	if (percent > thresholds.warnAt) return CONTEXT_COLORS.warning;
 	return CONTEXT_COLORS.normal;
 }
 

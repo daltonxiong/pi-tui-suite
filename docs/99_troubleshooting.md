@@ -8,6 +8,7 @@
 | 编号 | 现象关键词 | 状态 | 一句话解法 |
 | --- | --- | --- | --- |
 | [ERR-001](#err-001) | 右键粘贴 两次 / paste twice / Orca / TERM_PROGRAM | 已解决 | 让 `TERM_PROGRAM=orca`（及同类终端）跳过 pi 的合成右键粘贴，交回终端原生粘贴 |
+| [ERR-002](#err-002) | 上下文 60% 就爆 / maximum context length / 400 / max_tokens | 已解决 | 着色改按「窗口 − maxTokens − 4096」算，越过打 `!`；根治靠调小 `models.json` 的 `maxTokens` |
 
 ---
 
@@ -47,5 +48,48 @@ Electron/xterm.js 终端）必须跳过 pi 的合成粘贴；**不会**的（Win
 否则右击粘贴直接失效。遇到同类重复粘贴，先 `env | grep TERM_PROGRAM` 拿到终端标识，再加进名单。
 
 **涉及文件**　`src/right-click-paste/index.ts`、`src/config.ts`、`extensions/pi-tui-suite.ts`、`tools/smoke-test.mjs`
+
+---
+
+<a id="err-002"></a>
+### ERR-002 · 上下文指示才 60% 多，下一条请求就 400 爆窗口
+
+| | |
+| --- | --- |
+| **首次 / 最近** | 2026-10-30 / 2026-11-06 |
+| **状态** | 已解决（显示层）；根因在模型配置 |
+| **环境** | pi 1.5.0 · `deepseek` / `deepseek-flash`（`contextWindow` 1048576、`maxTokens` 393216） |
+
+**现象**　输入框上边框显示 `67.4%/1.0M`（看着还有三分之一窗口），下一条请求直接返回
+`400: This model's maximum context length is 1048576 tokens. However, you requested 1049860 tokens (724267 in the messages, 325593 in the completion)`。会话里没有任何 compaction 条目。
+
+**根因**　不是显示 bug，而是三件事叠在一起：
+
+1. pi 发请求前 `clampMaxTokensToContext()`：`max_tokens = min(model.maxTokens, 窗口 − estimateContextTokens(ctx) − 4096)`
+   （`pi-ai/dist/api/simple-options.js`，`CONTEXT_SAFETY_TOKENS = 4096`）；
+2. provider 把 prompt 与 completion 记在**同一个**窗口。所以只要上下文超过
+   `窗口 − maxTokens − 4096 = 651264`（即 62.1%），pi 就把窗口剩余全揽给 `max_tokens`，只剩 4096 兜估算误差；
+3. `estimateContextTokens()` 用 chars/4（中文/JSON 工具结果严重偏低）。那次估算 718887，真实 724267，
+   误差 5380 > 4096 ⇒ 超窗 1284 tokens。
+
+而进度条只在 70%/90% 变黄变红，与真实临界点（62%）错位，所以 67% 看上去安全。
+
+**解决方案**
+
+- 显示层（插件已改，见 `PATCHES.md` 第 13 条）：`contextThresholds()` 按
+  `窗口 − maxTokens − 4096` 算错误档位，`tokens` 越过它就用错误色并在百分比后加 `!`。
+- 根治（配置，本机已落地）：`~/.pi/agent/models.json` 的 `maxTokens` 由 393216 改成 65536（爆点从
+  62.5% 推到 93.8%），`~/.pi/agent/settings.json` 用 `compaction.modelOverrides` 给
+  `deepseek/deepseek-flash` 与 `deepseek/deepseek-v4-pro` 设 `reserveTokens: 150000`、
+  `keepRecentTokens: 20000`（自动压缩在 85.7% 触发）。摘要请求在阈值处只需 964k/1048k，
+  离爆点还有 84k 的估算误差空间。不要用顶层 `compaction.reserveTokens = 150000`：
+  落到 128k 窗口的模型上会让阈值恒成立，每轮都压。
+
+**替代方案 / 一般化教训**　判断上下文是否安全，要看「窗口 − 输出上限」而不是只看用量百分比；
+带大 `maxTokens` 的模型（1M 窗口配 393216 输出）从 62% 起就进入风险区。看到 `%` 后面带 `!`
+就该 `/compact`。改 `models.json` 后必须重启 pi（模型配置只在启动时加载）。
+复盘时直接读会话 JSONL 里的 `usage.input/output/cacheRead/cacheWrite` 与 `stopReason`，比看 TUI 显示准。
+
+**涉及文件**　`vendor/alps-pi@0.3.3/src/features/bottom-input/status.ts`、`tools/smoke-test.mjs`、`PATCHES.md`
 
 ---

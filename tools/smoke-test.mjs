@@ -156,4 +156,76 @@ if (mouseReport.needsMouseReportReplay() && !mouseReport.isMouseReportPatched())
 }
 console.log("✓ ConPTY 鼠标上报重放（平台判定 / 序列 / 补丁挂载）通过");
 
+// 回归：上下文危险区阈值 —— pi 把 max_tokens 报成 min(model.maxTokens, 窗口 - 估算 - 4096)，
+// provider 把 prompt 与 completion 记在同一个窗口。输出上限越大，可用输入越少；越过
+// 「窗口 - maxTokens - 4096」后请求只剩 4096 的估算误差余量，随时 400。
+// 下面的数字取自真实喷掉的一次会话：1M 窗口、maxTokens 393216、最后一条 usage 707144。
+const statusUrl = new URL("../vendor/alps-pi@0.3.3/src/features/bottom-input/status.ts", import.meta.url).pathname;
+const statusMod = await jiti.import(statusUrl);
+const thresholdCases = [
+	[{ tokens: 707144, contextWindow: 1048576, maxTokens: 393216 }, { errorAt: 62.109375, saturated: true }],
+	[{ tokens: 707144, contextWindow: 1048576, maxTokens: 65536 }, { errorAt: 90, saturated: false }],
+	[{ tokens: 707144, contextWindow: 1048576 }, { errorAt: 90, saturated: false }],
+	[{ tokens: 42000, contextWindow: 128000, maxTokens: 4096 }, { errorAt: 90, saturated: false }],
+];
+for (const [usage, expected] of thresholdCases) {
+	const actual = statusMod.contextThresholds(usage);
+	if (Math.abs(actual.errorAt - expected.errorAt) > 1e-9 || actual.saturated !== expected.saturated) {
+		console.error(`✗ contextThresholds(${JSON.stringify(usage)}) => ${JSON.stringify(actual)}，期望 ${JSON.stringify(expected)}`);
+		process.exit(1);
+	}
+}
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
+const theme = { fg: (_token, text) => text, bg: (_token, text) => text, bold: (t) => t, italic: (t) => t, underline: (t) => t };
+const overflowFrame = statusMod.renderFrameStatus(
+	{
+		ctx: { model: { provider: "deepseek", name: "deepseek-flash", contextWindow: 1048576, maxTokens: 393216 }, getThinkingLevel: () => "max" },
+		theme,
+		width: 100,
+		beautifiedInputEnabled: true,
+		isStreaming: false,
+		liveUsage: null,
+		latestAssistantUsage: null,
+		currentThinkingLevel: "max",
+		sessionStartTime: 0,
+		now: 0,
+		lastPrompt: "",
+	},
+	"deepseek/deepseek-flash",
+	"max",
+	{ tokens: 707144, contextWindow: 1048576, maxTokens: 393216, percent: 67.4 },
+);
+if (!stripAnsi(overflowFrame.context ?? "").includes("67.4%/1.0M!")) {
+	console.error(`✗ 越过输入预算后没有警示标：${JSON.stringify(stripAnsi(overflowFrame.context ?? ""))}`);
+	process.exit(1);
+}
+// error 色 #ff5f5f 必须真的落到这一段（只看文本会漏掉「颜色没跟着变」的回归）
+if (!(overflowFrame.context ?? "").includes("\x1b[38;2;255;95;95m")) {
+	console.error(`✗ 越过输入预算后没有转成错误色：${JSON.stringify(overflowFrame.context)}`);
+	process.exit(1);
+}
+const normalFrame = statusMod.renderFrameStatus(
+	{
+		ctx: { model: { provider: "deepseek", name: "deepseek-flash", contextWindow: 1048576, maxTokens: 65536 }, getThinkingLevel: () => "max" },
+		theme,
+		width: 100,
+		beautifiedInputEnabled: true,
+		isStreaming: false,
+		liveUsage: null,
+		latestAssistantUsage: null,
+		currentThinkingLevel: "max",
+		sessionStartTime: 0,
+		now: 0,
+		lastPrompt: "",
+	},
+	"deepseek/deepseek-flash",
+	"max",
+	{ tokens: 707144, contextWindow: 1048576, maxTokens: 65536, percent: 67.4 },
+);
+if (stripAnsi(normalFrame.context ?? "").includes("!") || !stripAnsi(normalFrame.context ?? "").includes("67.4%/1.0M")) {
+	console.error(`✗ 输出上限较小时的显示不对：${JSON.stringify(stripAnsi(normalFrame.context ?? ""))}`);
+	process.exit(1);
+}
+console.log("✓ 上下文危险区阈值（输入预算 / 警示标 / 错误色）通过");
+
 console.log("\n冒烟全部通过。");
